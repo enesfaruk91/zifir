@@ -1,5 +1,6 @@
 // Zifir — prosedürel jöle kahraman (SOZLESME §4). Ön yüz +Z, sol el +X.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const V3 = THREE.Vector3;
 const kisitla = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -176,6 +177,7 @@ class Sicrama {
 
 export function kur(G) {
   const kam = QS.has('kahramankam');
+  let gc = null; // gerçek model (GLB) hazır olunca dolar
   const uni = { uT: { value: 0 }, uAmp: { value: 0.008 }, uDev: { value: 0 }, uFlash: { value: 0 } };
   const envMap = envKur(G.renderer);
   const mat = jeleMat(uni, envMap);
@@ -210,6 +212,7 @@ export function kur(G) {
   mesh(new THREE.CapsuleGeometry(0.075, 0.1, 6, 14), spine, 0, 0.72, 0);
 
   // baş
+  let damlaUc = null;
   const kafa = new THREE.Group(); kafa.position.set(0, 0.74, 0.05); kafa.scale.setScalar(1.18); spine.add(kafa);
   mesh(kure(0.18), kafa, 0, 0.1, 0.01, 1.0, 1.02, 0.97);
   mesh(kure(0.11), kafa, 0, 0.0, 0.05, 1.0, 0.7, 0.9);        // çene yumuşaklığı
@@ -217,7 +220,7 @@ export function kur(G) {
   {
     const tp = new THREE.SplineCurve([[0.001, 0.0], [0.075, 0.03], [0.07, 0.1], [0.045, 0.19], [0.02, 0.28], [0.001, 0.34]].map(a => new THREE.Vector2(a[0], a[1]))).getPoints(24).map(q => new THREE.Vector2(Math.max(0.0008, q.x), q.y));
     const uc = mesh(new THREE.LatheGeometry(tp, 20), kafa, 0, 0.2, -0.015, 1, 1, 1);
-    uc.rotation.x = -0.5;
+    uc.rotation.x = -0.5; damlaUc = uc;
   }
   // damla gözler (ucu hafif içe yatık: dost bakış)
   const sh = new THREE.Shape();
@@ -306,10 +309,11 @@ export function kur(G) {
   const sahneEk = [];
   if (kam) {
     G.sahne.fog = null; G.sahne.background = new THREE.Color(0x0c0818);
-    const hm = new THREE.HemisphereLight(0x9a80ff, 0x201030, 0.6); G.sahne.add(hm);
-    const gunes = new THREE.DirectionalLight(0xffe8d0, 1.6); gunes.position.set(3, 5, 4); G.sahne.add(gunes);
+    const hm = new THREE.HemisphereLight(0x9a80ff, 0x201030, 1.6); G.sahne.add(hm);
+    const gunes = new THREE.DirectionalLight(0xffe8d0, 4); gunes.position.set(3, 5, 4); G.sahne.add(gunes);
     const rim = new THREE.PointLight(0x20f0e0, 18, 12); rim.position.set(-3, 2.5, -2); G.sahne.add(rim);
-    sahneEk.push(hm, gunes, rim);
+    const amb = new THREE.AmbientLight(0xb8a8ff, 1.2); G.sahne.add(amb);
+    sahneEk.push(hm, gunes, rim, amb);
     const zem = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: 0x120a22, roughness: 0.5, metalness: 0.3 }));
     zem.rotation.x = -Math.PI / 2; zem.position.y = -0.002; G.sahne.add(zem);
     const gh = new THREE.GridHelper(60, 60, 0x4a2a8a, 0x241046); G.sahne.add(gh);
@@ -321,7 +325,7 @@ export function kur(G) {
   for (let i = 0; i < 2; i++) KEYS.push('ax' + i, 'az' + i, 'ay' + i, 'ae' + i, 'lx' + i, 'lz' + i, 'lk' + i);
   const cur = {}, hd = {}; for (const k of KEYS) cur[k] = hd[k] = 0;
   const son = { durum: 'dur', hiz: new V3(), yerde: true, dev: false };
-  let durumT = 0, sayac = 0, ph = 0, devS = 1, devV = 0, devK = 0, pud = 0, hs = 0, sp = 0;
+  let bitFlas = 0, durumT = 0, sayac = 0, ph = 0, devS = 1, devV = 0, devK = 0, pud = 0, hs = 0, sp = 0;
   const gecici = { ax: 0, az: 0 }; const qw = new THREE.Quaternion(), dv = new V3(), sw = new V3();
 
   function kolHedef(i, nokta) {
@@ -495,10 +499,320 @@ export function kur(G) {
     else if (k.bit.distanceToSquared(bit) > 6) { k.ilerleme = 0.4; k.atandi = false; }
     k.bas.copy(bas); k.bit.copy(bit);
   }
-  function elNoktasi(taraf) { return yumruk[taraf === 'sag' ? 1 : 0].getWorldPosition(new V3()); }
+  function elNoktasi(taraf) { if (gc) return gc.el(taraf); return yumruk[taraf === 'sag' ? 1 : 0].getWorldPosition(new V3()); }
   function devOl(a) { son.dev = !!a; }
 
   G.kahraman = { grup, ayarla, dokunac, elNoktasi, devOl };
+
+  // ---------- GERÇEK MODEL: assets/3d/zifir_ual.glb (CC0, DEF-* kemikler) ----------
+  // Yüklenene / hata verene kadar prosedürel model görünür. Hata = prosedürel kalır.
+  const YOL = 'assets/3d/zifir_ual.glb';
+  const KALIN = { spine002: [1.2, 1, 1.12], spine003: [1.18, 1, 1.1], upper_arm: [1.32, 1, 1.32], forearm: [1.25, 1, 1.25], thigh: [1.25, 1, 1.25], shin: [1.12, 1, 1.12], hand: [1.22, 1.22, 1.22], f_: [1.25, 1.25, 1.25], thumb: [1.25, 1.25, 1.25] };
+  const ALT = /(hips|thigh|shin|foot|toe|^root)/i;
+
+  function gercekKur(gltf) {
+    const gm = gltf.scene, kok = new THREE.Group(), piv = new THREE.Group();
+    kok.add(gm); piv.add(kok);
+    const meshes = [], B = {}, bonelar = [];
+    gm.traverse(o => { if (o.isBone) { B[o.name.replace(/[.:]/g, '')] = o; bonelar.push(o); } if (o.isSkinnedMesh) meshes.push(o); });
+    const kb = (ad) => B['DEF-' + ad];
+    for (const n of ['hips', 'spine001', 'spine002', 'spine003', 'head', 'upper_armL', 'upper_armR', 'forearmL', 'forearmR', 'handL', 'handR', 'thighL', 'thighR', 'shinL', 'shinR', 'footL', 'toeL']) if (!kb(n)) throw new Error('kemik yok: ' + n);
+    if (!meshes.length || !gltf.animations?.length) throw new Error('mesh/animasyon yok');
+
+    const olc = () => { kok.updateMatrixWorld(true); const b = new THREE.Box3(); for (const m of meshes) { m.skeleton.update(); m.computeBoundingBox(); b.union(m.boundingBox.clone().applyMatrix4(m.matrixWorld)); } return b; };
+    const bw = (b, v = new V3()) => v.setFromMatrixPosition(b.matrixWorld);
+    kok.updateMatrixWorld(true);
+    if (bw(kb('toeL')).z < bw(kb('footL')).z - 0.01) gm.rotation.y = Math.PI;
+    let bb0 = olc();
+    const sk = 1.82 / (bb0.max.y - bb0.min.y);
+    gm.scale.setScalar(sk); bb0 = olc();
+    const minY = bb0.min.y;
+
+    const koseler = (adlar) => {
+      const set = new Set(adlar.map(a => kb(a))), out = [], v = new V3();
+      for (const m of meshes) {
+        const bn = m.skeleton.bones, gg = m.geometry, si = gg.attributes.skinIndex, sw = gg.attributes.skinWeight;
+        for (let i = 0; i < si.count; i++) {
+          let mk = 0, mw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > mw) { mw = w; mk = k; } }
+          if (set.has(bn[si.getComponent(i, mk)])) { m.getVertexPosition(i, v); out.push(v.clone().applyMatrix4(m.matrixWorld)); }
+        }
+      }
+      return out;
+    };
+    const basK = koseler(['head']);
+    const bas = new THREE.Box3().setFromPoints(basK);
+    const govdeK = koseler(['spine001', 'spine002', 'spine003']);
+    const omuzY = (bw(kb('upper_armL')).y + bw(kb('upper_armR')).y) / 2;
+    const yc = omuzY - 0.12;
+    let zOn = -9, zArka = 9, gen = 0;
+    for (const p of govdeK) {
+      if (Math.abs(p.x) < 0.04 && Math.abs(p.y - yc) < 0.06) { zOn = Math.max(zOn, p.z); zArka = Math.min(zArka, p.z); }
+      if (Math.abs(p.y - yc) < 0.08) gen = Math.max(gen, Math.abs(p.x));
+    }
+    if (zOn < -8 || zArka > 8 || !(bas.max.y > bas.min.y)) throw new Error('gövde/baş ölçülemedi');
+    console.info('[ZIFIR] kahraman ölçü', JSON.stringify({ sk, minY, bas: [bas.min.toArray(), bas.max.toArray()], omuzY, zOn, zArka, gen }));
+
+    // ---- kemik bağlı aksesuarlar ----
+    const eks = [];
+    const ekle = (kemik, sarmal) => {
+      const m = new THREE.Matrix4().copy(kok.matrixWorld).invert().multiply(kemik.matrixWorld);
+      const p = new V3(), q = new THREE.Quaternion(), s = new V3(); m.decompose(p, q, s);
+      kok.add(sarmal);
+      eks.push({ kemik, sarmal, rp: p, rqi: q.clone().invert() });
+    };
+    {
+      const H = bas.max.y - bas.min.y, W = bas.max.x - bas.min.x, D = bas.max.z - bas.min.z;
+      const cx = (bas.max.x + bas.min.x) / 2, cy = (bas.max.y + bas.min.y) / 2, cz = (bas.max.z + bas.min.z) / 2;
+      const sc = H / 0.36;
+      const kafaE = new THREE.Group(); kafaE.scale.setScalar(sc);
+      kafaE.position.set(cx, cy - 0.1 * sc, cz - 0.0 * sc);
+      kafaE.add(damlaUc);
+      const w = new THREE.Group(); w.add(kafaE);
+      const gs = 0.5 * H / 0.28;
+      gozler.forEach((piv, i) => {
+        const sg = i ? -1 : 1, x = sg * 0.3 * W, y = cy + 0.02 * H;
+        let zy = -9; for (const q of basK) if (Math.abs(q.x - x) < 0.025 && Math.abs(q.y - y) < 0.03 && q.z > zy) zy = q.z;
+        if (zy < -8) zy = cz + (D / 2) * Math.sqrt(Math.max(0.05, 1 - Math.pow(x / (W / 2), 2) - Math.pow((y - cy) / (H / 2), 2)));
+        piv.position.set(x, y, zy + 0.012); piv.scale.setScalar(gs); piv.rotation.y = sg * 0.18; w.add(piv);
+      });
+      ekle(kb('head'), w);
+    }
+    {
+      const k = Math.min(1.1, Math.max(0.6, gen / 0.31));
+      const tasG = new THREE.Group(); tasG.position.set(0, yc, zOn); tasG.scale.setScalar(k);
+      tas.position.set(0, 0, 0.05); yuva.position.set(0, 0, 0.03); hale.position.set(0, 0, 0.075);
+      tasG.add(tas, yuva, hale);
+      const arkaG = new THREE.Group(); arkaG.position.set(0, yc, zArka); arkaG.scale.setScalar(k);
+      tas2.position.set(0, 0, -0.012); hale2.position.set(0, 0, -0.03); arkaG.add(tas2, hale2);
+      const w = new THREE.Group(); w.add(tasG, arkaG);
+      ekle(kb('spine003'), w);
+    }
+    {
+      const sG = new THREE.Group(); sG.position.set(0, omuzY - 0.54, zArka + 0.12); sG.scale.setScalar(0.85);
+      for (const d of sirt) sG.add(d.tp.mesh);
+      const w = new THREE.Group(); w.add(sG);
+      ekle(kb('spine002'), w);
+    }
+
+    const ex0 = bw(kb('handL')).x > bw(kb('handR')).x;
+    const mk = (a, b) => ({ ust: kb('upper_arm' + a), on: kb('forearm' + a), el: kb('hand' + a), uyluk: kb('thigh' + a), baldir: kb('shin' + a) });
+    const K = { sol: mk(ex0 ? 'L' : 'R'), sag: mk(ex0 ? 'R' : 'L') };
+    const elK = { sol: new V3(), sag: new V3() };
+
+    const sm = jeleMat(uni, envMap); sm.customProgramCacheKey = () => 'zifirjele1s';
+    for (const m of meshes) { m.material = sm; m.castShadow = true; m.frustumCulled = false; }
+
+    const mixer = new THREE.AnimationMixer(gm);
+    const klip = {}; for (const c of gltf.animations) klip[c.name] = c;
+    const onbellek = {};
+    const aksiyon = (ad, kn) => {
+      const key = ad + '|' + kn; if (onbellek[key]) return onbellek[key];
+      const c = klip[ad] || klip.Idle_Loop;
+      const tr = c.tracks.filter(t => { const bn = t.name.split('.')[0]; return kn === 'a' ? ALT.test(bn) : !ALT.test(bn); });
+      return (onbellek[key] = mixer.clipAction(new THREE.AnimationClip(ad + kn, c.duration, tr)));
+    };
+    const sure = (ad) => (klip[ad] || klip.Idle_Loop).duration;
+    const kanal = { a: { ad: null, act: null, tazele: false }, u: { ad: null, act: null, tazele: false } };
+    const gec = (kn, ad, ts, tek, fade) => {
+      const k = kanal[kn], yeni = aksiyon(ad, kn);
+      if (k.ad === ad && !k.tazele) { k.act.timeScale = ts; return; }
+      const diger = kanal[kn === 'a' ? 'u' : 'a'];
+      yeni.enabled = true; yeni.reset(); yeni.timeScale = ts; yeni.weight = 1;
+      yeni.setLoop(tek ? THREE.LoopOnce : THREE.LoopRepeat, tek ? 1 : Infinity); yeni.clampWhenFinished = !!tek;
+      if (!tek && diger.ad === ad && diger.act) yeni.time = diger.act.time;
+      if (k.act && k.act !== yeni) yeni.crossFadeFrom(k.act, fade, false); else yeni.fadeIn(fade);
+      yeni.play(); k.ad = ad; k.act = yeni; k.tazele = false;
+    };
+
+    const g = { d: 'dur', dt: 0, tek: null, tekT: 0, inis: 0, yuvarlan: -1, flip: 0, flipT: 0, pivX: 0, kokZ: 0, kokY: 0, kick: -1, komboSifir: null, kombo: 0 };
+    function tekBaslat(ad, ts, kes, kapsam) {
+      g.tek = { ad, ts, kes, kapsam: kapsam || (hs > 2.5 || !son.yerde ? 'ust' : 'tam') }; g.tekT = 0;
+      kanal.a.tazele = kanal.u.tazele = true;
+    }
+    function kombo(v) {
+      let n = v?.komboNo;
+      if (!Number.isFinite(n)) n = (g.say = ((g.say ?? -1) + 1) % 4) + 1;
+      else { if (g.komboSifir === null) g.komboSifir = (n === 0); if (g.komboSifir) n += 1; }
+      g.kombo = n;
+      if (n === 1) tekBaslat('Punch_Jab', 1.7, 0.42);
+      else if (n === 2) tekBaslat('Punch_Cross', 1.7, 0.45);
+      else if (n === 3) { tekBaslat('Punch_Cross', 1.5, 0.5); g.kick = 0; }
+      else { tekBaslat('Spell_Simple_Shoot', 1.3, 0.7); bitFlas = 1; }
+    }
+    const on = (ad, fn) => G.olay?.on?.(ad, fn);
+    on('yumruk', kombo);
+    on('bitirici', () => { bitFlas = 1; if (g.kombo !== 4) tekBaslat('Spell_Simple_Shoot', 1.3, 0.7); });
+    on('hasar', () => { if (g.d !== 'hasar') tekBaslat('Hit_Chest', 1.4, 0.45); });
+    on('yere', (v) => { g.inis = 0.32; if (Math.abs(v?.hiz ?? 0) > 13 && hs > 5) g.yuvarlan = 3; });
+    on('kacis', () => { g.yuvarlan = 3; });
+    on('mukemmelBirakis', () => { g.flip = 0.0001; g.flipT = 0.75; });
+    on('konus', () => { if (!g.tek) tekBaslat('Jump_Land', 1.1, 0.5, 'tam'); });
+
+    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', duvar: 'duvar', duvarKos: 'duvar', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur' };
+    const esle = (ad) => {
+      if (ESLE[ad]) return ESLE[ad];
+      const l = String(ad).toLowerCase();
+      for (const [a, v] of [['duvar', 'duvar'], ['kos', 'kos'], ['yur', 'yuru'], ['sal', 'sallan'], ['cek', 'sallan'], ['zip', 'zip'], ['yum', 'yumruk'], ['kam', 'kamci'], ['has', 'hasar'], ['dog', 'dogus'], ['dus', 'dus']]) if (l.includes(a)) return v;
+      return 'dur';
+    };
+
+    const qe = new THREE.Quaternion(), eu = new THREE.Euler(), _p = new V3(), _s = new V3(), _q = new THREE.Quaternion(), qd = new THREE.Quaternion(), qu = new THREE.Quaternion(), qp = new THREE.Quaternion(), qI = new THREE.Quaternion();
+    const d1 = new V3(), d2 = new V3(), wp = new V3(), wc = new V3(), hed = new V3();
+    const ek = (kemik, x, y, z) => { eu.set(x, y, z); qe.setFromEuler(eu); kemik.quaternion.multiply(qe); kemik.updateMatrixWorld(true); };
+    function yonelt(ust, alt, hedef, w) {
+      bw(ust, wp); bw(alt, wc);
+      d1.subVectors(wc, wp).normalize(); d2.subVectors(hedef, wp);
+      if (d2.lengthSq() < 1e-6) return; d2.normalize();
+      qd.setFromUnitVectors(d1, d2); if (w < 1) { qI.identity().slerp(qd, w); qd.copy(qI); }
+      ust.matrixWorld.decompose(_p, qu, _s); qu.premultiply(qd);
+      ust.parent.matrixWorld.decompose(_p, qp, _s); qp.invert();
+      ust.quaternion.copy(qp.multiply(qu)); ust.updateMatrixWorld(true);
+    }
+    const kolUzat = (t, hedef, w) => { yonelt(t.ust, t.on, hedef, w); yonelt(t.on, t.el, hedef, w); };
+
+    const qk = new THREE.Quaternion(), vv = new V3(), omuzP = new V3(), invK = new THREE.Matrix4(), mm = new THREE.Matrix4();
+    const fwd = new V3(), upV = new V3(), yanSol = new V3(), dirV = new V3(), tmpH = new V3();
+
+    let izAcc = 0;
+    function guncelle(dt, t) {
+      if (!izole) return adim(dt, t);
+      const an = parseFloat(QS.get('an')) || 3;   // test: ilk karede an sn ileri sar, sonra dondur
+      while (izAcc < an) { adim(0.04, t); izAcc += 0.04; }
+      adim(0, t);
+    }
+    function adim(dt, t) {
+      grup.updateMatrixWorld(true);
+      const d = esle(son.durum);
+      const girdi = d !== g.d; if (girdi) { g.d = d; g.dt = 0; }
+      g.dt += dt;
+      const havada = !son.yerde;
+      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9;
+      if (egik) g.yuvarlan = -1;
+      if (g.yuvarlan > 0) { g.yuvarlan -= 1; if (g.yuvarlan <= 0) { g.yuvarlan = -2; tekBaslat('Roll', 1.5, 0.55, 'tam'); } }
+      if (g.inis > 0) g.inis -= dt;
+      if (g.flipT > 0) { g.flip += dt / 0.75; if (g.flip >= 1) { g.flip = 0; g.flipT = 0; } }
+
+      if (girdi) {
+        if (d === 'yumruk' && !(g.tek && /Punch|Spell/.test(g.tek.ad))) kombo(QS.has('kombo') ? { komboNo: +QS.get('kombo') } : null);
+        if (d === 'kamci') tekBaslat('Spell_Simple_Shoot', 1.8, 0.45);
+        if (d === 'hasar' && !(g.tek && g.tek.ad === 'Hit_Chest')) tekBaslat('Hit_Chest', 1.4, 0.45);
+      }
+      if (izole && d === 'yumruk' && g.dt > 1.0 && !g.tek) { g.dt = 0; kombo({ komboNo: (g.say = ((g.say ?? -1) + 1) % 4) + 1 }); }
+      if (g.tek) { g.tekT += dt; if (g.tekT > g.tek.kes) g.tek = null; }
+      if (g.kick >= 0) { g.kick += dt; if (g.kick > 0.55) g.kick = -1; }
+
+      let lo = 'Idle_Loop', loTs = 1, tekr = false;
+      switch (d) {
+        case 'yuru': lo = hs < 3.4 ? 'Walk_Loop' : 'Jog_Fwd_Loop'; loTs = hs < 3.4 ? kisitla(hs / 1.5, 0.7, 1.9) : kisitla(hs / 4.4, 0.85, 1.5); break;
+        case 'kos': lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = hs < 7.5 ? kisitla(hs / 4.4, 0.85, 1.7) : kisitla(hs / 8, 0.85, 1.6); break;
+        case 'zipla': if (g.dt < sure('Jump_Start') * 0.85 && havada) { lo = 'Jump_Start'; tekr = true; } else lo = 'Jump_Loop'; break;
+        case 'dus': case 'sallan': case 'zip': lo = 'Jump_Loop'; break;
+        case 'duvar': lo = 'Idle_Loop'; loTs = 0.6; break;
+        case 'yumruk': case 'kamci': case 'hasar': if (hs > 0.8) { lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = kisitla(hs / 5, 0.8, 1.5); } break;
+      }
+      if (egik) { lo = 'Jump_Loop'; loTs = 1; tekr = false; }
+      else if (g.inis > 0 && d === 'dur' && !g.tek) { lo = 'Jump_Land'; tekr = true; loTs = 1.3; }
+      let uA = lo, uTs = loTs, aA = lo, aTs = loTs, aTek = tekr, uTek = tekr;
+      if (g.tek) {
+        uA = g.tek.ad; uTs = g.tek.ts; uTek = true;
+        if (g.tek.kapsam === 'tam' && !havada) { aA = g.tek.ad; aTs = g.tek.ts; aTek = true; }
+      }
+      const fade = g.tek ? 0.1 : 0.17;
+      gec('a', aA, aTs, aTek, fade);
+      gec('u', uA, uTs, uTek, fade);
+      mixer.update(dt);
+
+      for (const bn of bonelar) {
+        const ad = bn.name.replace('DEF-', '').replace(/[LR]$/, '');
+        const kk = KALIN[ad] || (ad.startsWith('f_') ? KALIN.f_ : ad.startsWith('thumb') ? KALIN.thumb : null);
+        if (kk) bn.scale.set(kk[0], kk[1], kk[2]);
+      }
+      gm.updateMatrixWorld(true);
+
+      kok.getWorldQuaternion(qk);
+      const solT = K.sol, sagT = K.sag;
+      fwd.set(0, 0, 1).applyQuaternion(qk); upV.set(0, 1, 0).applyQuaternion(qk); yanSol.set(1, 0, 0).applyQuaternion(qk);
+      const e = Math.atan2(son.hiz.y, Math.max(0.5, hs));
+      let pivH = 0, kokZh = 0;
+      if (egik) {
+        for (const T of [solT, sagT]) { ek(T.uyluk, -1.35, 0, 0); ek(T.baldir, 1.8, 0, 0); }
+      } else if (d === 'sallan') {
+        pivH = kisitla(0.55 - 0.5 * e, 0.1, 1.0);
+        const r = ten.sag.aktif ? 'sag' : (ten.sol.aktif ? 'sol' : 'sag');
+        const o = r === 'sag' ? 'sol' : 'sag';
+        const hedefP = ten[r].aktif ? ten[r].bit : tmpH.copy(bw(K[r].ust, omuzP)).addScaledVector(upV, 3).addScaledVector(fwd, 1.5);
+        kolUzat(K[r], hedefP, 1);
+        hed.copy(bw(K[o].ust, omuzP)).addScaledVector(fwd, -0.9).addScaledVector(upV, -0.5).addScaledVector(yanSol, (o === 'sol' ? 1 : -1) * 0.7);
+        kolUzat(K[o], hed, 0.75);
+        const sw = Math.sin(t * 3);
+        ek(solT.uyluk, -0.5 - 0.08 * sw, 0, 0); ek(solT.baldir, 1.0, 0, 0);
+        ek(sagT.uyluk, -0.15, 0, 0); ek(sagT.baldir, 1.5 + 0.1 * sw, 0, 0);
+      } else if (d === 'zip') {
+        if (sp > 1) dirV.copy(son.hiz).normalize(); else dirV.copy(fwd);
+        pivH = kisitla(Math.PI / 2 - e, 0.2, 1.6);
+        for (const T of [solT, sagT]) { hed.copy(bw(T.ust, omuzP)).addScaledVector(dirV, 4); kolUzat(T, hed, 1); ek(T.uyluk, 0.25, 0, 0); ek(T.baldir, 0.3, 0, 0); }
+      } else if (d === 'dus') {
+        pivH = 0.12;
+        const fl = Math.sin(t * 13) * 0.12;
+        for (const T of [solT, sagT]) {
+          const s = T === solT ? 1 : -1;
+          hed.copy(bw(T.ust, omuzP)).addScaledVector(yanSol, s * 3).addScaledVector(upV, 0.9 + fl).addScaledVector(fwd, -0.25);
+          kolUzat(T, hed, 0.85);
+        }
+        ek(solT.uyluk, -0.2, 0, 0.1); ek(sagT.uyluk, 0.2, 0, -0.1);
+      } else if (d === 'duvar') {
+        // dört uzuvlu tırmanış: gövde duvara eğik, kollar dönüşümlü yukarı uzanır, dizler dönüşümlü kalkar
+        pivH = 0.22; kokZh = 0.1;
+        const hizli = son.durum === 'duvarKos' ? 1.5 : 1, ac = sp > 0.4 ? 1 : 0.15;
+        for (let i = 0; i < 2; i++) {
+          const T = i ? sagT : solT, f = ph * hizli + i * Math.PI, sn = Math.sin(f), yk = (0.5 + 0.5 * sn) * ac;
+          hed.copy(bw(T.ust, omuzP)).addScaledVector(upV, 0.35 + 0.65 * yk).addScaledVector(fwd, 0.55).addScaledVector(yanSol, (i ? -1 : 1) * 0.12);
+          kolUzat(T, hed, 1);
+          const bk = (0.5 - 0.5 * sn) * ac;
+          ek(T.uyluk, -0.35 - 1.0 * bk, (i ? -1 : 1) * 0.15 * bk, 0); ek(T.baldir, 0.5 + 1.0 * bk, 0, 0);
+        }
+      } else if (d === 'kamci' && ten.kamci.aktif) {
+        kolUzat(solT, ten.kamci.bit, 0.9);
+      }
+      if (g.kick >= 0 && !havada) {
+        const k = Math.sin(kisitla(g.kick / 0.5, 0, 1) * Math.PI);
+        ek(sagT.uyluk, -1.6 * k, 0, 0); ek(sagT.baldir, 0.5 * k, 0, 0);
+      }
+      const yum = 1 - Math.exp(-dt * 10);
+      g.pivX += (pivH - g.pivX) * yum; g.kokZ += (kokZh - g.kokZ) * yum;
+      let fa = 0; if (g.flip > 0) { const f = g.flip; fa = (f < 0.5 ? 2 * f * f : 1 - 2 * (1 - f) * (1 - f)) * Math.PI * 2; }
+      piv.rotation.x = g.pivX + fa;
+      kok.position.z = g.kokZ;
+      piv.updateMatrixWorld(true);
+
+      invK.copy(kok.matrixWorld).invert();
+      for (const a of eks) {
+        mm.multiplyMatrices(invK, a.kemik.matrixWorld).decompose(_p, _q, _s);
+        _q.multiply(a.rqi);
+        a.sarmal.quaternion.copy(_q);
+        a.sarmal.position.copy(a.rp).applyQuaternion(_q).negate().add(_p);
+      }
+      for (const ad of ['sol', 'sag']) {
+        const T = K[ad];
+        mm.multiplyMatrices(invK, T.el.matrixWorld); _p.setFromMatrixPosition(mm);
+        mm.multiplyMatrices(invK, T.on.matrixWorld); wc.setFromMatrixPosition(mm);
+        elK[ad].copy(_p).addScaledVector(d2.subVectors(_p, wc).normalize(), 0.09);
+      }
+    }
+
+    piv.position.y = 0.95;
+    kok.position.y = -0.95 - minY;
+    govde.add(piv);
+    kalca.visible = false;
+    gc = { hazir: true, guncelle, el: (taraf) => kok.localToWorld(elK[taraf === 'sag' ? 'sag' : 'sol'].clone()) };
+    console.info('[ZIFIR] kahraman GLB hazır');
+  }
+
+  try {
+    new GLTFLoader().load(YOL, (gltf) => {
+      try { gercekKur(gltf); } catch (e) { console.warn('[ZIFIR] kahraman GLB kurulamadı, prosedürel:', e); gc = null; }
+    }, undefined, (e) => console.warn('[ZIFIR] kahraman GLB yüklenemedi, prosedürel:', e));
+  } catch (e) { console.warn('[ZIFIR] GLTFLoader hata:', e); }
 
   // ---------- test sürücüsü ----------
   const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus'];
@@ -506,10 +820,11 @@ export function kur(G) {
   function testSur(dt) {
     const sabit = QS.get('durum');
     const idx = sabit ? SIRA.indexOf(sabit) : Math.floor(G.t) % SIRA.length;
+    if (izole) { G.durum = 'duraklat'; const ar = document.getElementById('arayuz'); if (ar) ar.style.display = 'none'; }
     if (izole) { const benim = new Set([grup, ten.sol.tp.mesh, ten.sag.tp.mesh, ten.kamci.tp.mesh, izler[0].mesh, izler[1].mesh, ...Object.values(ten).map(k => k.sic.g), ...sahneEk]); for (const c of G.sahne.children) if (!benim.has(c)) c.visible = false; }
     if (idx !== testIdx) { testIdx = idx; grup.position.set(0, 0, 0); for (const z of izler) z.temizle(); if (QS.has('dev') && !son.dev) devOl(true); }
     const d = SIRA[Math.max(0, idx)], h = HIZ[d];
-    ayarla({ durum: d, hiz: tmpV.set(0, h[1], h[0]), yerde: d === 'dur' || d === 'yuru' || d === 'kos' });
+    ayarla({ durum: d, hiz: tmpV.set(0, h[1], h[0]), yerde: d === 'dur' || d === 'yuru' || d === 'kos' || d === 'yumruk' || d === 'kamci' || d === 'hasar' || d === 'dogus' });
     if (QS.has('dev')) son.dev = true;
     if (izole) { grup.position.x = 0; grup.position.y = 0; grup.quaternion.identity(); }
     grup.position.z += h[0] * dt;
@@ -585,10 +900,12 @@ export function kur(G) {
     const bt = Math.exp(-Math.pow((p - 0.1) / 0.06, 2)) + 0.6 * Math.exp(-Math.pow((p - 0.3) / 0.07, 2));
     const renkK = 0.5 + 0.5 * Math.sin(t * 0.8 + bt * 0.5);
     tasMat.emissive.setRGB(0.65 + (0.05 - 0.65) * renkK, 0.2 + (0.95 - 0.2) * renkK, 1.0 + (0.9 - 1.0) * renkK);
-    tasMat.emissiveIntensity = 0.45 + 0.4 * bt + 0.35 * devK;
+    bitFlas *= Math.exp(-dt * 2.5);
+    tasMat.emissiveIntensity = 0.45 + 0.4 * bt + 0.35 * devK + 2.2 * bitFlas;
     tas.scale.set(1 + 0.22 * bt, 1.15 + 0.22 * bt, 0.9 + 0.1 * bt).multiplyScalar(1 + 0.3 * devK);
-    hale.material.color.copy(tasMat.emissive); hale.material.opacity = 0.16 + 0.2 * bt; hale.scale.setScalar(0.42 + 0.14 * bt + 0.16 * devK); hale2.scale.copy(hale.scale); hale2.material.color.copy(hale.material.color); hale2.material.opacity = hale.material.opacity; tas2.scale.copy(tas.scale); tas2.scale.multiplyScalar(0.8);
+    hale.material.color.copy(tasMat.emissive); hale.material.opacity = 0.16 + 0.2 * bt; hale.scale.setScalar(0.42 + 0.14 * bt + 0.16 * devK + 0.5 * bitFlas); hale2.scale.copy(hale.scale); hale2.material.color.copy(hale.material.color); hale2.material.opacity = hale.material.opacity; tas2.scale.copy(tas.scale); tas2.scale.multiplyScalar(0.8);
 
+    if (gc) gc.guncelle(dt, t);
     sirtGuncelle(t);
     dokunacGuncelle(dt, t);
 
