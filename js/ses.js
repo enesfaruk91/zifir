@@ -250,14 +250,14 @@ function muzikGuncelle(G, dt) {
     const m = durum.muzik[k]; if (!m.g) continue;
     const ac = k === hedef && calabilir;
     // 2 sn çapraz geçiş: gain'i dt ile doğrusal kaydır
-    const hiz = dt / 2;
     m.hedef = ac ? 1 : 0;
+    const hiz = m.hedef ? dt / 1.2 : dt / 0.5; // giden parça hızlı sussun, gelen yumuşak girsin
     m.seviye = m.seviye ?? 0;
     m.seviye += Math.max(-hiz, Math.min(hiz, m.hedef - m.seviye));
     // döngü dikişi: sonda ve başta 1.5 sn fade (chase kırpılmış)
     let dikis = 1;
     if (k === 'chase' && m.sure > 5) { const c = m.el.currentTime; dikis = Math.max(0, Math.min(1, c / 1.5, (m.sure - c) / 1.5)); dikis = dikis * dikis * (3 - 2 * dikis); }
-    m.g.gain.value = m.seviye * m.seviye * dikis * 0.45 * duraklat;
+    m.g.gain.value = m.seviye * m.seviye * dikis * 0.3 * duraklat;
     if (m.seviye > 0.001 && m.el.paused && calabilir) m.el.play().catch(() => { });
     else if (m.seviye <= 0.001 && !m.el.paused) m.el.pause();
   }
@@ -336,7 +336,7 @@ export function guncelle(G, dt) {
     let n = 0;
     if (G.dusman?.liste && G.oyuncu?.konum) for (const d of G.dusman.liste) if (d.canli && d.konum && d.konum.distanceTo(G.oyuncu.konum) < 45) n++;
     const patron = /Patron/i.test(G.gorev?.aktif?.ad || '');
-    if (n >= 3 || patron) { chaseModu = true; sakinSayac = 0; }
+    if (patron) { chaseModu = true; sakinSayac = 0; } // kovalamaca müziği yalnız patron savaşında (düşman sayısına göre gidip gelme üst üste binmeye yol açıyordu)
     else if (chaseModu) { sakinSayac += gercekDt; if (sakinSayac > 6) chaseModu = false; }
   } else { chaseModu = false; sakinSayac = 0; }
   if (durum.yuklendi) muzikGuncelle(G, gercekDt);
