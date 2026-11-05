@@ -31,13 +31,15 @@ from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
 PORT = 8765
-CDP_PORT = 9333
+# Birden çok ajan aynı anda koşabildiği için port sabit değil; main() içinde
+# socket.bind(("127.0.0.1", 0)) ile boş bir port seçilir.
+CDP_PORT = 0
 OYUN_URL = f"http://127.0.0.1:{PORT}/?test=1"
+EGITIM_URL = f"http://127.0.0.1:{PORT}/?test=1&egitim=1"
 RAPOR = KOK / "RAPOR" / "test_bot.md"
-CHROME_LOG = Path("/tmp/zifir_test_chrome.log")
 
 MODULLER = ["girdi", "sehir", "kahraman", "oyuncu", "dusman", "gorev", "ses", "arayuz"]
-HATA_DESENI = re.compile(r"uncaught|THREE\.WebGLProgram|shader", re.I)
+HATA_DESENI = re.compile(r"uncaught|shader|webglprogram|is not defined", re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +219,42 @@ def bekle(kosul, sure: float = 30.0, adim: float = 0.2):
     return son
 
 
+def bos_port() -> int:
+    """İşletim sisteminin boş bir TCP portu vermesini sağlar (bind 0)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def js_gt_bekle(kosul: str, gt_sure: float, wall_cap: float = 90.0) -> str:
+    """Oyun saati G.t'ye göre bekler; gt_sure aşılırsa tamam=False döner.
+
+    Duvar saati yalnız güvenlik sınırıdır (takılı kalan sayfa testi kilitlemesin).
+    """
+    return ("""new Promise(resolve => {
+      const G = window.G || {};
+      const g0 = (typeof G.t === 'number') ? G.t : 0;
+      const w0 = performance.now();
+      const kontrol = () => { try { return !!(__KOSUL__); } catch (e) { return false; } };
+      const bitir = (neden) => resolve({
+        tamam: kontrol(), neden,
+        gecenOyun: ((window.G && window.G.t) || 0) - g0,
+        gecenDuvar: (performance.now() - w0) / 1000
+      });
+      if (kontrol()) { bitir('kosul'); return; }
+      const id = setInterval(() => {
+        if (kontrol()) { clearInterval(id); bitir('kosul'); return; }
+        const g = ((window.G && window.G.t) || 0) - g0;
+        if (g >= __GT__) { clearInterval(id); bitir('oyun-suresi'); return; }
+        if (performance.now() - w0 >= __WALL__) { clearInterval(id); bitir('duvar-suresi'); }
+      }, 50);
+    })"""
+            .replace("__KOSUL__", kosul)
+            .replace("__GT__", repr(float(gt_sure)))
+            .replace("__WALL__", repr(float(wall_cap * 1000.0))))
+
+
 def http_json(yol: str) -> dict:
     with urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}{yol}", timeout=3) as y:
         return json.load(y)
@@ -251,7 +289,7 @@ def js_test1() -> str:
 
 
 def js_gozlem() -> str:
-    # Örnekleme oyunun G.t saatine göre (10 oyun-sn); duvar saati yalnız 120 sn güvenlik sınırı.
+    # Örnekleme oyunun G.t saatine göre (10 oyun-sn); duvar saati yalnız 180 sn güvenlik sınırı.
     return """new Promise(resolve => {
       const G = window.G, w0 = performance.now(), g0 = G.t;
       let ornek = 0, sallan = 0, nan = 0, minY = Infinity, maxY = -Infinity, dusuk = 0, binaIci = 0;
@@ -272,14 +310,17 @@ def js_gozlem() -> str:
           }
         }
         if (p && (p.durum === 'sallan' || p.durum === 'cek')) sallan++;
-        if (G.t - g0 >= 10 || performance.now() - w0 > 120000) {
+        if (G.t - g0 >= 10 || performance.now() - w0 > 180000) {
           clearInterval(id);
+          const gecen = G.t - g0;
           resolve({
             ornek, sallan, nan, dusuk, binaIci,
+            tamam: gecen >= 10,
+            neden: gecen >= 10 ? 'oyun-suresi' : 'duvar-suresi',
             sallanmaYeni: (G.oyuncu.sallanSayisi || 0) - ilkSallanma, sallanmaToplam: G.oyuncu.sallanSayisi || 0,
             minY: Number.isFinite(minY) ? minY : null,
             maxY: Number.isFinite(maxY) ? maxY : null,
-            gecenSure: G.t - g0,
+            gecenSure: gecen,
             yeniHatalar: (window.__ZIFIR_HATALAR || []).slice(ilkHata, ilkHata + 5)
           });
         }
@@ -385,29 +426,65 @@ def js_test_gorsel_kutu() -> str:
 
 
 def js_test_cekis() -> str:
-    # (d) sağ tık basılı → yerden yüksek çatıya çekiliyor, nişan göstergesi yüksek hedefi gösteriyor
+    # (d) SOZLESME: sağ tık basılı = yüksek ankrajla sallanma, E = çatıya zip; nişan yüksek hedefi gösterir.
     return "(async () => {" + JS_ORTAK + """
       G.girdi = sahteGirdi;
       const uzun = bin.filter(b => b.h > 40 && b.h < 100 && Math.hypot(b.x, b.z) < 250);
-      const sonuc = { deneme: 6, catida: 0, cekGordu: 0, nisanVar: 0, enGec: 0, ayrinti: [], zincir: null };
-      for (let n = 0; n < sonuc.deneme; n++) {
-        const b = uzun[(n * 7) % uzun.length], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4];
+      const sonuc = { deneme: 6, sallanGordu: 0, yuksekAnkraj: 0, zipGordu: 0, catida: 0,
+                      nisanVar: 0, enGec: 0, ayrinti: [], durumlar: {}, ankrajKare: 0 };
+      let n = 0, kk = 0, atlanan = 0;
+      while (n < sonuc.deneme && kk < 60) {
+        const b = uzun[(kk * 7) % uzun.length], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4]; kk++;
         const bx = b.x + d[0] * (b.gx / 2 + 15), bz = b.z + d[1] * (b.gz / 2 + 15);
-        G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
-        G.oyuncu.yaw = Math.atan2(d[0], d[1]) + (n % 3 - 1) * 0.3; G.oyuncu.pitch = 0.15;
-        let cek = false, nisan = false, indi = -1;
-        for (let i = 0; i < 480; i++) {
+        const yaw = Math.atan2(d[0], d[1]) + (n % 3 - 1) * 0.3;
+        // B için uygun bakış var mı (nişan = BU binanın çatı kenarı)? Yoksa (komşu bina önde vb.) bu bina atlanır.
+        let uygunPit = null;
+        for (const pit of [0.4, 0.3, 0.5, 0.2, 0.6, 0.7]) {
+          G.oyuncu.isinla(new T.Vector3(bx, b.h - 10, bz)); G.oyuncu.yaw = yaw; G.oyuncu.pitch = pit;
           tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
-          if (i >= 10 && i < 400) { tuslar.add('Fare2'); if (i === 10) yeni.add('Fare2'); }
+          O.guncelle(G, 1 / 60);
+          const nn = G.oyuncu.nisanNokta;
+          if (G.oyuncu.nisanVar && nn && Math.abs(nn.y - b.h) < 1.5 && nn.x > b.x - b.gx / 2 - 1 && nn.x < b.x + b.gx / 2 + 1 && nn.z > b.z - b.gz / 2 - 1 && nn.z < b.z + b.gz / 2 + 1) { uygunPit = pit; break; }
+        }
+        if (uygunPit === null) { atlanan++; continue; }
+        n++; sonuc.atlanan = atlanan;
+        // A) yerden sağ tık: yüksek ankraj ve 'sallan' durumu
+        G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
+        G.oyuncu.yaw = yaw; G.oyuncu.pitch = 0.15;
+        let sallan = false, yuksek = false, nisan = false;
+        for (let i = 0; i < 90; i++) {
+          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
+          tuslar.add('Fare2'); if (i === 0) yeni.add('Fare2');
           O.guncelle(G, 1 / 60);
           const p = G.oyuncu;
+          sonuc.durumlar[p.durum] = (sonuc.durumlar[p.durum] || 0) + 1;
+          if (p.ankraj) sonuc.ankrajKare++;
+          if (p.durum === 'sallan') sallan = true;
+          if (p.ankraj && p.ankraj.y >= p.konum.y + 10) yuksek = true;
           if (i < 10 && p.nisanVar && p.nisanNokta && p.nisanNokta.y >= 10) nisan = true;
-          if (p.durum === 'cek') cek = true;
-          if (indi < 0 && p.yerde && p.konum.y > b.h - 1.5) indi = i;
         }
-        if (cek) sonuc.cekGordu++; if (nisan) sonuc.nisanVar++;
+        // B) E ile çatıya çekilme: çatı kenarının 10 m altından, bakış çatının üstünden geçerek E (hedef çatı kenarı)
+        G.oyuncu.isinla(new T.Vector3(bx, b.h - 10, bz));
+        G.oyuncu.yaw = yaw; G.oyuncu.pitch = uygunPit;
+        let zip = false, indi = -1;
+        let maxY = -Infinity, zipKare = 0, sonY = 0, sonDurum = null;
+        for (let i = 0; i < 480; i++) {
+          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
+          if (i === 2) { tuslar.add('KeyE'); yeni.add('KeyE'); }
+          O.guncelle(G, 1 / 60);
+          const p = G.oyuncu;
+          if (p.durum === 'zip') { zip = true; zipKare++; }
+          if (p.konum.y > maxY) maxY = p.konum.y;
+          sonY = p.konum.y; sonDurum = p.durum;
+          if (p.yerde && p.konum.y > b.h - 1.5) { indi = i; break; }
+        }
+        if (sallan) sonuc.sallanGordu++;
+        if (yuksek) sonuc.yuksekAnkraj++;
+        if (zip) sonuc.zipGordu++;
+        if (nisan) sonuc.nisanVar++;
         if (indi >= 0) { sonuc.catida++; sonuc.enGec = Math.max(sonuc.enGec, indi / 60); }
-        sonuc.ayrinti.push([+b.h.toFixed(0), indi]);
+        sonuc.ayrinti.push([+b.h.toFixed(0), sallan, yuksek, zip, indi,
+                            +(Number.isFinite(maxY) ? maxY : 0).toFixed(1), +sonY.toFixed(1), sonDurum, zipKare]);
       }
       G.girdi = eskiGirdi; return sonuc;
     })()"""
@@ -570,45 +647,59 @@ def js_test5() -> str:
     })()"""
 
 
-def js_test6_bul() -> str:
-    return """(() => {
-      const G = window.G;
+def js_test6() -> str:
+    # Görünür kürelerin en yakın 12'sine sırayla ışınlanır; en fazla 3 oyun-sn.
+    return """new Promise(resolve => {
+      const G = window.G, T = G.THREE;
       let mesh = null;
       G.sahne.traverse(o => {
         if (!mesh && o && o.isInstancedMesh && o.count === 60 && o.geometry && o.geometry.type === 'OctahedronGeometry') mesh = o;
       });
-      if (!mesh) return { hata: 'Işık Küresi InstancedMesh bulunamadı' };
-      const m = new G.THREE.Matrix4(), p = new G.THREE.Vector3(), sc = new G.THREE.Vector3();
-      let nokta = null;
+      const r = { hata: null, bulundu: !!mesh, onceKure: G.gorev.toplamKure,
+                  onceProg: G.gorev.aktif ? G.gorev.aktif.ilerleme : null,
+                  noktaSayisi: 0, deneme: 0, tamam: false, neden: null,
+                  gecenOyun: 0, gecenDuvar: 0, durum: G.oyuncu.durum,
+                  konum: { x: G.oyuncu.konum.x, y: G.oyuncu.konum.y, z: G.oyuncu.konum.z } };
+      if (!mesh) { r.hata = 'Işık Küresi InstancedMesh bulunamadı'; resolve(r); return; }
+      const m = new T.Matrix4(), p = new T.Vector3(), sc = new T.Vector3();
+      const noktalar = [];
       for (let i = 0; i < mesh.count; i++) {
-        mesh.getMatrixAt(i, m);
-        p.setFromMatrixPosition(m);
-        sc.setFromMatrixScale(m);
-        if (sc.x > 0.01 && sc.y > 0.01) { nokta = p.clone(); break; }
+        mesh.getMatrixAt(i, m); p.setFromMatrixPosition(m); sc.setFromMatrixScale(m);
+        if (sc.x > 0.01 && sc.y > 0.01) noktalar.push(p.clone());
       }
-      if (!nokta) return { hata: 'görünür küre örneği yok' };
-      const onceKure = G.gorev.toplamKure;
-      const onceProg = G.gorev.aktif ? G.gorev.aktif.ilerleme : null;
-      G.oyuncu.isinla(nokta);
-      return {
-        nokta: { x: nokta.x, y: nokta.y, z: nokta.z },
-        onceKure, onceProg,
-        konum: { x: G.oyuncu.konum.x, y: G.oyuncu.konum.y, z: G.oyuncu.konum.z }
+      r.noktaSayisi = noktalar.length;
+      if (!noktalar.length) { r.hata = 'görünür küre örneği yok'; resolve(r); return; }
+      const pk = G.oyuncu.konum;
+      noktalar.sort((a, b) => a.distanceToSquared(pk) - b.distanceToSquared(pk));
+      const aday = noktalar.slice(0, 12);
+      const g0 = G.t, w0 = performance.now();
+      let idx = 0, sonDene = -1, bitti = false;
+      const kontrol = () => (G.gorev.toplamKure > r.onceKure) ||
+        (G.gorev.aktif && r.onceProg !== null && (G.gorev.aktif.ilerleme || 0) > r.onceProg);
+      const bitir = (neden) => {
+        if (bitti) return; bitti = true; clearInterval(id);
+        r.neden = neden; r.tamam = kontrol();
+        r.gecenOyun = G.t - g0; r.gecenDuvar = (performance.now() - w0) / 1000;
+        r.deneme = idx; r.durum = G.oyuncu.durum;
+        r.konum = { x: G.oyuncu.konum.x, y: G.oyuncu.konum.y, z: G.oyuncu.konum.z };
+        r.sonKure = G.gorev.toplamKure;
+        r.sonProg = G.gorev.aktif ? G.gorev.aktif.ilerleme : null;
+        r.aktifAd = G.gorev.aktif ? G.gorev.aktif.ad : null;
+        resolve(r);
       };
-    })()"""
-
-
-def js_test6_sonuc() -> str:
-    return """(() => {
-      const G = window.G;
-      return {
-        sonraKure: G.gorev.toplamKure,
-        sonraProg: G.gorev.aktif ? G.gorev.aktif.ilerleme : null,
-        aktifAd: G.gorev.aktif ? G.gorev.aktif.ad : null,
-        konum: { x: G.oyuncu.konum.x, y: G.oyuncu.konum.y, z: G.oyuncu.konum.z },
-        can: G.oyuncu.can
+      const dene = () => {
+        if (idx >= aday.length) return false;
+        G.oyuncu.isinla(aday[idx++]); sonDene = G.t; return true;
       };
-    })()"""
+      dene();
+      const id = setInterval(() => {
+        if (kontrol()) return bitir('toplandi');
+        if (G.t - g0 >= 3.0) return bitir('oyun-suresi');
+        if (performance.now() - w0 >= 30000) return bitir('duvar-suresi');
+        if (G.t - sonDene >= 0.25) { if (!dene()) return bitir('aday-bitti'); }
+      }, 50);
+    })"""
+
 
 
 def js_test7_kur() -> str:
@@ -636,6 +727,15 @@ def js_test7_durum() -> str:
     })()"""
 
 
+def js_test7_bekle() -> str:
+    return js_gt_bekle(
+        "((window.__TEST_OLAY || []).some(e => e && e.ad === 'yenildi') && G.oyuncu && "
+        "G.oyuncu.can >= G.oyuncu.canMax - 1e-6 && Number.isFinite(G.oyuncu.konum.y) && G.oyuncu.konum.y > -5)",
+        4.0, 30.0,
+    )
+
+
+
 def js_kare(sure_ms: int = 3000) -> str:
     return ("""new Promise(resolve => {
       let kare = 0, ilk = 0, son = 0, toplam = 0;
@@ -657,18 +757,25 @@ def js_kare(sure_ms: int = 3000) -> str:
 
 def js_hizlandir() -> str:
     # Oyun kodunu değiştirmeden yalnız çizim yükünü azalt (mantık aynı kalır).
+    # Eşzamanlı ajanlar SwiftShader CPU'sunu paylaştığı için çok küçük tampon ve
+    # yalnız temel RenderPass kullanılır; renderer.info yine gerçek çizim sayılarını verir.
     return """(() => {
       const G = window.G;
       G.renderer.setPixelRatio(0.5);
-      G.renderer.setSize(480, 270, false);
-      G.composer.setSize(480, 270);
+      G.renderer.setSize(160, 90, false);
+      G.composer.setSize(160, 90);
       if (G.bloom) G.bloom.enabled = false;
       G.renderer.shadowMap.enabled = false;
-      G.kamera.aspect = 480 / 270;
+      if (Array.isArray(G.composer.passes)) {
+        G.composer.passes.forEach((p, i) => { try { p.enabled = (i === 0); } catch (e) {} });
+      }
+      G.kamera.aspect = 160 / 90;
       G.kamera.updateProjectionMatrix();
       return {
         tampon: { genislik: G.renderer.domElement.width, yukseklik: G.renderer.domElement.height },
-        bloom: G.bloom ? G.bloom.enabled : null, golge: G.renderer.shadowMap.enabled
+        bloom: G.bloom ? G.bloom.enabled : null, golge: G.renderer.shadowMap.enabled,
+        etkinPass: Array.isArray(G.composer.passes) ? G.composer.passes.filter(p => p.enabled).length : null,
+        toplamPass: Array.isArray(G.composer.passes) ? G.composer.passes.length : null
       };
     })()"""
 
@@ -694,6 +801,182 @@ def js_son_konsol() -> str:
         });
       }, 1200);
     })"""
+
+
+def js_konsol_durum() -> str:
+    return """(() => ({
+      testKonsol: Array.isArray(window.__TEST_KONSOL) ? window.__TEST_KONSOL.slice(-500) : [],
+      zifirHatalar: Array.isArray(window.__ZIFIR_HATALAR) ? window.__ZIFIR_HATALAR.slice() : []
+    }))()"""
+
+
+def js_ses() -> str:
+    return """(() => {
+      const G = window.G, s = G && G.ses;
+      const r = { var: !!s, yuklendi: !!(s && s.yuklendi), calisti: false, calHata: null };
+      if (!s) return r;
+      try {
+        if (typeof s.cal === 'function') { s.cal('arayuz_sec'); r.calisti = true; }
+        else r.calHata = "G.ses.cal fonksiyonu yok";
+      } catch (e) { r.calHata = String((e && e.message) || e); }
+      return r;
+    })()"""
+
+
+def js_arayuz() -> str:
+    return """(() => {
+      const G = window.G, a = G && G.ayar;
+      const r = { var: !!a, alanlar: {}, once: G ? G.kalite : null, ara: null, son: null,
+                  kaliteHata: null, geriHata: null };
+      if (!a) return r;
+      for (const k of ['hassasiyet', 'yTers', 'fov']) r.alanlar[k] = (k in a);
+      try {
+        G.kaliteAyarla('dusuk'); r.ara = G.kalite;
+        G.kaliteAyarla('orta'); r.son = G.kalite;
+      } catch (e) { r.kaliteHata = String((e && e.message) || e); }
+      try { if (r.once) G.kaliteAyarla(r.once, false); } catch (e) { r.geriHata = String((e && e.message) || e); }
+      return r;
+    })()"""
+
+
+def js_efekt() -> str:
+    return """new Promise(resolve => {
+      const G = window.G, e = G && G.efekt;
+      const r = { var: !!e, fonks: {}, hatalar: [], minZamanOlcek: null, ornek: 0,
+                  once: G ? G.zamanOlcek : null, gecenOyun: 0, gecenDuvar: 0, neden: null };
+      if (!e) { resolve(r); return; }
+      for (const ad of ['sars', 'yavasCekim', 'vurusDuraklat', 'hizBulanikligi', 'flas'])
+        r.fonks[ad] = typeof e[ad] === 'function';
+      const dene = (ad, ...a) => { try { e[ad](...a); } catch (err) { r.hatalar.push(ad + ': ' + String((err && err.message) || err)); } };
+      try { G.zamanOlcek = 1; } catch (err) { /* yok say */ }
+      dene('sars', 0.2, 0.2);
+      dene('yavasCekim', 0.5, 0.8);
+      const g0 = G.t, w0 = performance.now();
+      let min = Infinity, n = 0, bitti = false;
+      const bitir = (neden) => {
+        if (bitti) return;
+        bitti = true;
+        r.minZamanOlcek = Number.isFinite(min) ? min : null;
+        r.ornek = n; r.neden = neden;
+        r.gecenOyun = ((window.G && window.G.t) || 0) - g0;
+        r.gecenDuvar = (performance.now() - w0) / 1000;
+        // Kalan efekt fonksiyonlarını da çağır (hata varsa listeye eklenir).
+        dene('vurusDuraklat', 0.05);
+        dene('hizBulanikligi', 0.5);
+        dene('flas', 0xff3030, 0.2);
+        resolve(r);
+      };
+      function adim() {
+        if (bitti) return;
+        const z = G.zamanOlcek;
+        if (typeof z === 'number' && z < min) min = z;
+        n++;
+        if (G.t - g0 >= 0.8) return bitir('oyun-suresi');
+        if (performance.now() - w0 > 30000) return bitir('duvar-suresi');
+        requestAnimationFrame(adim);
+      }
+      requestAnimationFrame(adim);
+    })"""
+
+
+def js_kahraman() -> str:
+    return """(() => {
+      const G = window.G, k = G && G.kahraman;
+      if (!k || !k.grup) return { var: false, skinned: 0, isimler: [], cocuk: 0 };
+      let skinned = 0; const isimler = [];
+      k.grup.traverse(o => { if (o && o.isSkinnedMesh) { skinned++; if (isimler.length < 3) isimler.push(o.name || '?'); } });
+      return { var: true, skinned, isimler, cocuk: k.grup.children.length };
+    })()"""
+
+
+def js_dusman() -> str:
+    return """(() => {
+      const G = window.G, D = G && G.dusman;
+      const r = { var: !!D, listeDizi: !!(D && Array.isArray(D.liste)), robot: 0, dron: 0,
+                  mermilerVar: false, mermilerDizi: false, oyuncuMermileriDizi: false };
+      if (!r.listeDizi) return r;
+      for (const e of D.liste) {
+        if (!e || !e.canli) continue;
+        if (e.tur === 'robot') r.robot++;
+        else if (e.tur === 'dron') r.dron++;
+      }
+      r.mermilerVar = ('mermiler' in D);
+      r.mermilerDizi = Array.isArray(D.mermiler);
+      r.oyuncuMermileriDizi = Array.isArray(D.oyuncuMermileri);
+      return r;
+    })()"""
+
+
+def js_egitim() -> str:
+    return """(() => {
+      const G = window.G, g = G && G.gorev;
+      const a = g && g.aktif && g.aktif.ad;
+      const ad = (typeof a === 'string') ? a : null;
+      return {
+        var: !!g, ad, egitimde: !!(g && g.egitimde),
+        adim: !!(ad && ad.indexOf('EĞİTİM') === 0),
+        ipucu: g && g.ipucu ? (g.ipucu.baslik || null) : null
+      };
+    })()"""
+
+
+def js_perf() -> str:
+    # Oyun saati G.t üzerinden 5 saniye; her karede renderer.info.render değerleri.
+    return """new Promise(resolve => {
+      const G = window.G || {}, info = G.renderer && G.renderer.info;
+      const g0 = (typeof G.t === 'number') ? G.t : 0;
+      const w0 = performance.now();
+      const GT = 5.0, WALL = 180000;
+      let n = 0, calls = 0, tri = 0, minC = Infinity, maxC = -Infinity, bitti = false;
+      const bitir = (neden) => {
+        if (bitti) return;
+        bitti = true;
+        clearTimeout(guard);
+        const g = ((window.G && window.G.t) || 0) - g0;
+        resolve({
+          tamam: neden === 'oyun-suresi' && n > 0, neden,
+          ornek: n, ortalamaCagri: n ? calls / n : null, ortalamaUcgen: n ? tri / n : null,
+          minCagri: Number.isFinite(minC) ? minC : null, maxCagri: Number.isFinite(maxC) ? maxC : null,
+          gecenOyun: g, gecenDuvar: (performance.now() - w0) / 1000,
+          renderKapali: !!G.__TEST_RENDER_KAPALI, infoVar: !!info
+        });
+      };
+      const guard = setTimeout(() => bitir('duvar-suresi'), WALL + 500);
+      function adim() {
+        if (bitti) return;
+        const r = info && info.render;
+        if (r) { const c = +r.calls || 0, t = +r.triangles || 0; calls += c; tri += t; n++; if (c < minC) minC = c; if (c > maxC) maxC = c; }
+        const g = ((window.G && window.G.t) || 0) - g0;
+        if (g >= GT) return bitir('oyun-suresi');
+        if (performance.now() - w0 >= WALL) return bitir('duvar-suresi');
+        requestAnimationFrame(adim);
+      }
+      requestAnimationFrame(adim);
+    })"""
+
+
+# G.t tabanlı bekleme koşulları (JS ifadeleri)
+KOSUL_SKINNED = """(() => {
+  const g = window.G && window.G.kahraman && window.G.kahraman.grup;
+  if (!g) return false;
+  let n = 0; g.traverse(o => { if (o && o.isSkinnedMesh) n++; });
+  return n > 0;
+})()"""
+
+KOSUL_DUSMAN = """(() => {
+  const D = window.G && window.G.dusman;
+  if (!D || !Array.isArray(D.liste)) return false;
+  let robot = 0, dron = 0;
+  for (const e of D.liste) { if (!e || !e.canli) continue; if (e.tur === 'robot') robot++; else if (e.tur === 'dron') dron++; }
+  return robot >= 1 && dron >= 1;
+})()"""
+
+KOSUL_EGITIM = """(() => {
+  const G = window.G, g = G && G.gorev;
+  const a = g && g.aktif && g.aktif.ad;
+  return typeof a === 'string' && a.indexOf('EĞİTİM') === 0 && !!g.egitimde;
+})()"""
+
 
 
 ENJEKTE_KONSOL = r"""
@@ -753,20 +1036,26 @@ def main() -> int:
         print("KALDI: google-chrome bulunamadı")
         return 2
 
+    global CDP_PORT
+
+    sunucu = None
     sunucu_bizim = False
     chrome = None
+    chrome_log = None
+    chrome_log_yolu: Path | None = None
     profil = None
     ws = None
     sonuclar: list[dict] = []
 
-    def ekle(no: int, ad: str, gecti: bool, detay: str, modul: str) -> None:
+    def ekle(ad: str, gecti: bool, detay: str, modul: str) -> None:
+        no = len(sonuclar) + 1
         sonuclar.append({"no": no, "ad": ad, "gecti": bool(gecti), "detay": detay, "modul": modul})
         print(f"{no}. {'GEÇTİ' if gecti else 'KALDI'} — {ad}: {detay}")
 
     try:
         if not sunucu_hazir():
             print(f"[bilgi] {PORT} portunda ZİFİR sunucusu yok; başlatılıyor…")
-            subprocess.Popen(
+            sunucu = subprocess.Popen(
                 [sys.executable, "-m", "http.server", str(PORT), "--bind", "127.0.0.1"],
                 cwd=str(KOK), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
@@ -776,11 +1065,16 @@ def main() -> int:
         else:
             print(f"[bilgi] {PORT} portundaki mevcut ZİFİR sunucusu kullanılıyor")
 
-        if port_acik(CDP_PORT):
-            raise RuntimeError(f"{CDP_PORT} portu dolu; eski bir Chrome kapanmamış olabilir")
+        # Eşzamanlı ajanlar 9333 gibi sabit bir portta çakışmasın: boş port seç.
+        for _ in range(20):
+            CDP_PORT = bos_port()
+            if not port_acik(CDP_PORT):
+                break
+        print(f"[bilgi] Chrome DevTools portu: {CDP_PORT} (otomatik seçildi)")
 
         profil = tempfile.mkdtemp(prefix="zifir-test-chrome-")
-        chrome_log = open(CHROME_LOG, "wb")
+        chrome_log_yolu = Path(profil) / "chrome.log"
+        chrome_log = open(chrome_log_yolu, "wb")
         chrome_args = [
             chrome_yolu,
             "--headless=new",
@@ -789,7 +1083,7 @@ def main() -> int:
             f"--remote-debugging-port={CDP_PORT}",
             "--remote-allow-origins=*",
             f"--user-data-dir={profil}",
-            "--window-size=1280,720",
+            "--window-size=640,360",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-background-timer-throttling",
@@ -842,9 +1136,8 @@ def main() -> int:
         if not hazir:
             raise RuntimeError("Oyun 45 saniye içinde hazır olmadı (G/oyuncu yok)")
 
-        # swiftshader 1280x720 + bloom ile 0.2-0.8 fps'e düşüyor; bu hem oyun saatini
-        # dt=0.05 sınırıyla yavaşlatıyor hem de uzun süreli ağır çizimde bağlantıyı
-        # koparabiliyor. Oyun kodunu değiştirmeden yalnız çizim yükünü azaltıyoruz;
+        # swiftshader + eşzamanlı Chrome yükü altında ağır çizim oyun saatini 0.05 sn/frame
+        # sınırına takıyor. Oyun kodunu değiştirmeden yalnız çizim yükünü azaltıyoruz;
         # fizik/görev mantığı aynı guncelle döngüsünde kalıyor.
         hiz = cdp.degerlendir(js_hizlandir()) or {}
         print(f"[bilgi] Çizim yükü azaltıldı; tampon={hiz.get('tampon')}")
@@ -859,7 +1152,7 @@ def main() -> int:
             detay1 += f"; eksik: {', '.join(eksik)}"
         if hatalar:
             detay1 += f"; __ZIFIR_HATALAR={hatalar[:3]}"
-        ekle(1, "8 modül yüklü ve hata listesi boş", gecti1, detay1, "oyun.js + tüm modüller")
+        ekle("8 modül yüklü ve hata listesi boş", gecti1, detay1, "oyun.js + tüm modüller")
 
         # 2 + 3 — 10 sn konum gözlemi ve sallanma örneklemesi
         print("[bilgi] 10 sn konum/sallanma gözlemi…")
@@ -868,13 +1161,13 @@ def main() -> int:
         maxY = gozlem.get("maxY")
         nan = gozlem.get("nan", 0)
         dusuk = gozlem.get("dusuk", 0)
-        gecti2 = nan == 0 and minY is not None and minY > -5
-        detay2 = (f"{gozlem.get('ornek', 0)} örnek / {gozlem.get('gecenSure', 0):.1f} sn; "
-                  f"NaN={nan}; y min={minY if minY is not None else 'yok'}, max={maxY if maxY is not None else 'yok'}"
-                  f"; y<=-5 örnek={dusuk}")
+        gecti2 = bool(gozlem.get("tamam")) and nan == 0 and minY is not None and minY > -5
+        detay2 = (f"{gozlem.get('ornek', 0)} örnek / {gozlem.get('gecenSure', 0):.1f} oyun-sn "
+                  f"({gozlem.get('neden')}); NaN={nan}; y min={minY if minY is not None else 'yok'}, "
+                  f"max={maxY if maxY is not None else 'yok'}; y<=-5 örnek={dusuk}")
         if gozlem.get("yeniHatalar"):
             detay2 += f"; yeni hatalar={gozlem['yeniHatalar'][:2]}"
-        ekle(2, "10 sn boyunca konum NaN değil ve y > -5", gecti2, detay2, "oyuncu.js")
+        ekle("10 sn boyunca konum NaN değil ve y > -5", gecti2, detay2, "oyuncu.js")
         bina_ici_demo = gozlem.get("binaIci", 0)
 
         sallan = gozlem.get("sallan", 0)
@@ -882,8 +1175,63 @@ def main() -> int:
         gecti3 = sallan > 0 or toplam_sallanma > 0
         detay3 = (f"'sallan'/'cek' durumu {sallan}/{gozlem.get('ornek', 0)} örnekte görüldü (G.t'ye göre "
                   f"{gozlem.get('gecenSure', 0):.1f} oyun-sn); oyuncu toplam sallanma sayacı={toplam_sallanma}")
-        ekle(3, "Test demosunda sallanma en az bir kez gerçekleşti", gecti3, detay3,
+        ekle("Test demosunda sallanma en az bir kez gerçekleşti", gecti3, detay3,
              "girdi.js (test demosu) + oyuncu.js (sallanma)")
+
+        # 4 — kahraman GLB / SkinnedMesh (en fazla 15 oyun-sn)
+        print("[bilgi] GLB SkinnedMesh bekleniyor (en fazla 15 oyun-sn)…")
+        kh_bekle = cdp.degerlendir(js_gt_bekle(KOSUL_SKINNED, 15.0, 120.0), promise=True) or {}
+        kh = cdp.degerlendir(js_kahraman()) or {}
+        gecti_kh = bool(kh_bekle.get("tamam") and kh.get("skinned", 0) > 0)
+        if not kh.get("var"):
+            detay_kh = "G.kahraman / G.kahraman.grup yok"
+        else:
+            detay_kh = (f"SkinnedMesh={kh.get('skinned', 0)} ({kh.get('isimler')}), grup çocuk={kh.get('cocuk')}; "
+                        f"bekleme {kh_bekle.get('gecenOyun', 0):.1f} oyun-sn ({kh_bekle.get('neden')}), "
+                        f"duvar {kh_bekle.get('gecenDuvar', 0):.1f} sn")
+        ekle("G.kahraman.grup içinde GLB SkinnedMesh yüklendi (≤15 oyun-sn)", gecti_kh, detay_kh, "kahraman.js")
+
+        # 5 — düşman listesinde en az 1 dron + 1 robot, mermiler dizi
+        print("[bilgi] Düşman dron/robot bekleniyor (en fazla 30 oyun-sn)…")
+        ds_bekle = cdp.degerlendir(js_gt_bekle(KOSUL_DUSMAN, 30.0, 120.0), promise=True) or {}
+        ds = cdp.degerlendir(js_dusman()) or {}
+        gecti_ds = bool(ds_bekle.get("tamam") and ds.get("robot", 0) >= 1 and ds.get("dron", 0) >= 1
+                        and (not ds.get("mermilerVar") or ds.get("mermilerDizi")))
+        detay_ds = (f"robot={ds.get('robot', 0)}, dron={ds.get('dron', 0)}, liste dizi={ds.get('listeDizi')}; "
+                    f"G.dusman.mermiler var={ds.get('mermilerVar')} dizi={ds.get('mermilerDizi')}, "
+                    f"oyuncuMermileri dizi={ds.get('oyuncuMermileriDizi')}; "
+                    f"bekleme {ds_bekle.get('gecenOyun', 0):.1f} oyun-sn ({ds_bekle.get('neden')})")
+        ekle("G.dusman.liste içinde en az 1 dron ve 1 robot var; mermiler dizi", gecti_ds, detay_ds, "dusman.js")
+
+        # 6 — ses: G.ses tanımlı ve 'arayuz_sec' hatasız çalıyor
+        ses = cdp.degerlendir(js_ses()) or {}
+        gecti_ses = bool(ses.get("var") and ses.get("calisti") and not ses.get("calHata"))
+        detay_ses = (f"G.ses={'var' if ses.get('var') else 'YOK'}, yuklendi={ses.get('yuklendi')}, "
+                     f"'arayuz_sec' çağrısı={'hata yok' if ses.get('calisti') and not ses.get('calHata') else ('HATA: ' + str(ses.get('calHata')))}")
+        ekle("Ses: G.ses.yuklendi / G.ses tanımlı ve 'arayuz_sec' hatasız çalıyor", gecti_ses, detay_ses, "ses.js")
+
+        # 7 — arayüz ayarları ve kalite geçişi
+        ay = cdp.degerlendir(js_arayuz()) or {}
+        alanlar = ay.get("alanlar", {}) if isinstance(ay.get("alanlar"), dict) else {}
+        gecti_ay = bool(ay.get("var") and all(alanlar.get(k) for k in ("hassasiyet", "yTers", "fov"))
+                        and not ay.get("kaliteHata") and ay.get("ara") == "dusuk" and ay.get("son") == "orta")
+        detay_ay = (f"G.ayar={'var' if ay.get('var') else 'YOK'}, alanlar={alanlar}; "
+                    f"kalite {ay.get('once')}→dusuk→orta (ara={ay.get('ara')}, son={ay.get('son')}); "
+                    f"hata={ay.get('kaliteHata')}")
+        ekle("Arayüz: G.ayar (hassasiyet/yTers/fov) ve kalite 'dusuk'→'orta' hatasız", gecti_ay, detay_ay, "arayuz.js + oyun.js")
+        # Test bütçesi: kalite denemesi çizim ayarlarını büyütmüş olabilir; tekrar küçült.
+        cdp.degerlendir(js_hizlandir())
+
+        # 8 — 5 oyun-sn performans bilgisi (renderer.info)
+        print("[bilgi] 5 oyun-sn performans bilgisi toplanıyor…")
+        perf = cdp.degerlendir(js_perf(), promise=True) or {}
+        gecti_perf = bool(perf.get("tamam") and isinstance(perf.get("ortalamaCagri"), (int, float)))
+        detay_perf = (f"ortalama {perf.get('ortalamaCagri')} çizim çağrısı/kare, "
+                      f"{perf.get('ortalamaUcgen')} üçgen/kare; {perf.get('ornek')} kare, "
+                      f"{perf.get('gecenOyun', 0):.1f} oyun-sn ({perf.get('neden')}), "
+                      f"duvar {perf.get('gecenDuvar', 0):.1f} sn; render kapalı={perf.get('renderKapali')} (bilgi)")
+        ekle("Performans bilgisi: 5 oyun-sn ortalama renderer.info çizim çağrısı/üçgen", gecti_perf, detay_perf,
+             "oyun.js render döngüsü")
 
         # 8 (bilgi) — çizim yükü azaltılmış halde 3 sn kare süresi; demo gözleminden
         # sonra ölçülür ki demo saati erkenden tükenmesin.
@@ -896,6 +1244,17 @@ def main() -> int:
         hiz_olcum = cdp.degerlendir(js_kare(1200), promise=True) or {}
         print(f"[bilgi] Test hızı: {hiz_olcum.get('fps', 0):.1f} fps"
               f"{' (render kapatıldı)' if render_kapali else ''}")
+
+        # 9 — kare süresi (bilgi)
+        ort = t8_tam.get("ortalama")
+        fps = t8_tam.get("fps")
+        gecti8 = isinstance(ort, (int, float))
+        detay8 = (f"ortalama {ort:.2f} ms/kare (~{fps:.1f} fps), "
+                  f"{t8_tam.get('kare')} kare / {t8_tam.get('sure', 0):.0f} ms; composer 160x90, "
+                  f"çizim tamponu 80x45, yalnız RenderPass (bloom/gölge kapalı) — swiftshader yazılım render, bilgi amaçlı. "
+                  f"Mantık testleri: {hiz_olcum.get('fps', 0):.1f} fps"
+                  f"{' (render kapalı)' if render_kapali else ''}.")
+        ekle("Ortalama kare süresi ölçüldü (yalnız bilgi)", gecti8, detay8, "oyun.js render döngüsü")
 
         # 4 — ankraj ve çarpışma
         t4 = cdp.degerlendir(js_test4())
@@ -910,13 +1269,11 @@ def main() -> int:
                   f"normal={carpis.get('normal')}, duvar={carpis.get('duvar')}")
         if t4.get("hata"):
             detay4 = t4["hata"]
-        ekle(4, "ankrajBul yukarı-ileri ışında nokta buluyor; carpis iç noktayı dışarı itiyor",
+        ekle("ankrajBul yukarı-ileri ışında nokta buluyor; carpis iç noktayı dışarı itiyor",
              gecti4, detay4, "sehir.js")
 
-        # 5 — yumruk olayı
-        bekle(lambda: cdp.degerlendir(
-            "(() => { const D = window.G && window.G.dusman; return !!(D && D.liste && D.liste.some(e => e && e.canli && (e.tur === 'robot' || e.tur === 'dron') && !e.dev)); })()"
-        ), 12, 0.3)
+        # 5 — yumruk olayı (düşman hazır olana kadar G.t tabanlı bekleme)
+        cdp.degerlendir(js_gt_bekle(KOSUL_DUSMAN, 10.0, 60.0), promise=True)
         t5 = cdp.degerlendir(js_test5())
         if isinstance(t5, dict) and t5.get("hata"):
             gecti5 = False
@@ -926,81 +1283,51 @@ def main() -> int:
             detay5 = (f"{t5.get('tur')} can {t5.get('oncekiCan')}→{t5.get('sonrakiCan')}, "
                       f"canlı {t5.get('oncekiCanli')}→{t5.get('sonrakiCanli')}, "
                       f"aktif {t5.get('oncekiAktif')}→{t5.get('sonrakiAktif')}")
-        ekle(5, "yumruk olayı robot canını düşürüyor / robot sayısını azaltıyor", gecti5, detay5, "dusman.js")
+        ekle("yumruk olayı robot canını düşürüyor / robot sayısını azaltıyor", gecti5, detay5, "dusman.js")
 
-        # 6 — küreye ışınlanma
-        t6 = cdp.degerlendir(js_test6_bul())
-        if not isinstance(t6, dict) or t6.get("hata"):
+        # 6 — küreye ışınlanma (en fazla 3 oyun-sn, birden çok görünür küre denenir)
+        t6 = cdp.degerlendir(js_test6(), promise=True) or {}
+        if t6.get("hata"):
             gecti6 = False
-            detay6 = t6.get("hata", "küre bulunamadı") if isinstance(t6, dict) else "küre bulunamadı"
+            detay6 = t6["hata"]
         else:
-            time.sleep(1.2)
-            t6s = cdp.degerlendir(js_test6_sonuc())
-            once_k = t6.get("onceKure")
-            once_p = t6.get("onceProg")
-            son_k = t6s.get("sonraKure")
-            son_p = t6s.get("sonraProg")
-            gecti6 = (isinstance(son_k, (int, float)) and isinstance(once_k, (int, float)) and son_k > once_k) or \
-                     (isinstance(son_p, (int, float)) and isinstance(once_p, (int, float)) and son_p > once_p)
-            detay6 = (f"küre {once_k}→{son_k}, görev ilerlemesi {once_p}→{son_p} "
-                      f"({t6s.get('aktifAd')}); konum={t6s.get('konum')}")
-        ekle(6, "isinla(küre konumu) görev/küre sayısını artırıyor", gecti6, detay6,
+            gecti6 = bool(t6.get("tamam"))
+            detay6 = (f"küre {t6.get('onceKure')}→{t6.get('sonKure')}, görev ilerlemesi "
+                      f"{t6.get('onceProg')}→{t6.get('sonProg')} ({t6.get('aktifAd')}); "
+                      f"{t6.get('deneme')}/{t6.get('noktaSayisi')} görünür küre denendi, "
+                      f"bekleme {t6.get('gecenOyun', 0):.1f} oyun-sn ({t6.get('neden')}); "
+                      f"durum={t6.get('durum')}, konum={t6.get('konum')}")
+        ekle("isinla(küre konumu) görev/küre sayısını artırıyor", gecti6, detay6,
              "gorev.js + oyuncu.js.isinla")
 
-        # 7 — yenilme ve yeniden doğuş
-        t7 = cdp.degerlendir(js_test7_kur())
-        yenildi_zamani = None
+        # 7 — yenilme ve yeniden doğuş (G.t tabanlı, en fazla 4 oyun-sn)
+        cdp.degerlendir(js_test7_kur())
+        b7 = {}
         deneme_sayisi = 0
-        durum7 = t7
         for _ in range(3):
             deneme_sayisi += 1
             cdp.degerlendir("(() => { window.G.oyuncu.hasarAl(1000); return true; })()")
-            for _ in range(10):
-                time.sleep(0.1)
-                durum7 = cdp.degerlendir(js_test7_durum())
-                if any(e.get("ad") == "yenildi" for e in durum7.get("olaylar", [])):
-                    yenildi_zamani = time.time()
-                    break
-            if yenildi_zamani:
+            b7 = cdp.degerlendir(js_test7_bekle(), promise=True) or {}
+            if b7.get("tamam"):
                 break
-        tam_can = False
-        son_durum7 = durum7
-        if yenildi_zamani:
-            while time.time() - yenildi_zamani <= 4.0:
-                son_durum7 = cdp.degerlendir(js_test7_durum())
-                if (son_durum7.get("can", 0) >= son_durum7.get("canMax", 100) - 1e-6 and
-                        son_durum7.get("gecerli")):
-                    tam_can = True
-                    break
-                time.sleep(0.1)
-        gecti7 = bool(yenildi_zamani and tam_can)
-        if yenildi_zamani:
-            gecen = time.time() - yenildi_zamani
-            detay7 = (f"'yenildi' alındı ({deneme_sayisi} çağrı); {gecen:.1f} sn sonra can="
-                      f"{son_durum7.get('can')}/{son_durum7.get('canMax')}, konum={son_durum7.get('konum')}, "
-                      f"geçerli={son_durum7.get('gecerli')}")
-        else:
-            detay7 = (f"'yenildi' olayı gelmedi ({deneme_sayisi} hasarAl(1000) çağrısı); "
-                      f"durum={durum7.get('durum')}, can={durum7.get('can')}/{durum7.get('canMax')}")
-        ekle(7, "hasarAl(1000) sonrası 4 sn içinde can dolu ve konum geçerli", gecti7, detay7, "oyuncu.js")
-
-        # 8 — kare süresi (bilgi)
-        ort = t8_tam.get("ortalama")
-        fps = t8_tam.get("fps")
-        gecti8 = isinstance(ort, (int, float))
-        detay8 = (f"ortalama {ort:.2f} ms/kare (~{fps:.1f} fps), "
-                  f"{t8_tam.get('kare')} kare / {t8_tam.get('sure', 0):.0f} ms; composer 480x270, "
-                  f"çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. "
-                  f"Mantık testleri: {hiz_olcum.get('fps', 0):.1f} fps"
-                  f"{' (render kapalı)' if render_kapali else ''}.")
-        ekle(8, "Ortalama kare süresi ölçüldü (yalnız bilgi)", gecti8, detay8, "oyun.js render döngüsü")
+        son_durum7 = cdp.degerlendir(js_test7_durum()) or {}
+        yenildi = any(e.get("ad") == "yenildi" for e in son_durum7.get("olaylar", []))
+        tam_can = (son_durum7.get("can", 0) >= son_durum7.get("canMax", 100) - 1e-6 and
+                   bool(son_durum7.get("gecerli")))
+        gecti7 = bool(b7.get("tamam") and yenildi and tam_can)
+        detay7 = (f"'yenildi'={'alındı' if yenildi else 'YOK'} ({deneme_sayisi} hasarAl(1000) çağrısı); "
+                  f"bekleme {b7.get('gecenOyun', 0):.1f} oyun-sn ({b7.get('neden')}), "
+                  f"duvar {b7.get('gecenDuvar', 0):.1f} sn; can={son_durum7.get('can')}/"
+                  f"{son_durum7.get('canMax')}, durum={son_durum7.get('durum')}, "
+                  f"konum={son_durum7.get('konum')}, geçerli={son_durum7.get('gecerli')}")
+        ekle("hasarAl(1000) sonrası 4 oyun-sn içinde can dolu ve konum geçerli", gecti7, detay7, "oyuncu.js")
 
         # 10 — koşarak bina çarpışması (a)
         t10 = cdp.degerlendir(js_test_kosu(), promise=True) or {}
         gecti10 = t10.get("deneme", 0) >= 30 and t10.get("ihlal", 1) == 0
         detay10 = (f"{t10.get('deneme')} bina × 2 sn yerden 15 m/s koşu = {t10.get('ornek')} örnek; "
                    f"bina içinde ayak/bel/baş noktası={t10.get('ihlal')}" + (f" ilk={t10.get('ilk')}" if t10.get("ilk") else ""))
-        ekle(10, "30 binaya yerden 15 m/s koşuda oyuncu hiçbir bina kutusunun içine girmiyor", gecti10, detay10, "oyuncu.js + sehir.js")
+        ekle("30 binaya yerden 15 m/s koşuda oyuncu hiçbir bina kutusunun içine girmiyor", gecti10, detay10, "oyuncu.js + sehir.js")
 
         # 11 — sallanma/zip çarpışması (b)
         t11 = cdp.degerlendir(js_test_sallanma_carpisma(), promise=True) or {}
@@ -1008,40 +1335,99 @@ def main() -> int:
         detay11 = (f"{t11.get('deneme')} çatı denemesi × 10 sn (sallan+zıpla+E) = {t11.get('ornek')} örnek; "
                    f"bina içi={t11.get('ihlal')}, sallan/cek örneği={t11.get('sallan')}, max hız={t11.get('maxHiz', 0):.0f}; "
                    f"canlı demo 10 oyun-sn bina içi örnek={bina_ici_demo}" + (f" ilk={t11.get('ilk')}" if t11.get("ilk") else ""))
-        ekle(11, "Sallanma demosunda 10 sn boyunca bina içinde değil (simülasyon + canlı demo)", gecti11, detay11, "oyuncu.js + sehir.js")
+        ekle("Sallanma demosunda 10 sn boyunca bina içinde değil (simülasyon + canlı demo)", gecti11, detay11, "oyuncu.js + sehir.js")
 
         # 12 — görsel matris / fizik kutusu uyuşması (c)
         t12 = cdp.degerlendir(js_test_gorsel_kutu(), promise=True) or {}
         gecti12 = t12.get("kutuEslesmeyen", 1) == 0 and t12.get("carpisiz", 1) == 0 and t12.get("instance", 0) > 0
         detay12 = (f"görsel instance={t12.get('instance')}, binalar[].kutu={t12.get('bina')}; kutusu eşleşmeyen={t12.get('kutuEslesmeyen')}, "
                    f"fizik katı olmayan görsel nokta={t12.get('carpisiz')}" + (f" ornek={t12.get('ornek') or t12.get('carpisizOrnek')}" if (t12.get("ornek") or t12.get("carpisizOrnek")) else ""))
-        ekle(12, "Görsel bina instance matrisleri fizik kutularıyla uyuşuyor", gecti12, detay12, "sehir.js")
+        ekle("Görsel bina instance matrisleri fizik kutularıyla uyuşuyor", gecti12, detay12, "sehir.js")
 
-        # 13 — sağ tık yukarı çekiş
+        # 13 — sağ tık yerden sallanma + E ile yüksek çatıya zip
         t13 = cdp.degerlendir(js_test_cekis(), promise=True) or {}
-        gecti13 = (t13.get("catida", 0) == t13.get("deneme", -1) and t13.get("cekGordu", 0) == t13.get("deneme", -1)
+        gecti13 = (t13.get("sallanGordu", 0) == t13.get("deneme", -1)
+                   and t13.get("yuksekAnkraj", 0) == t13.get("deneme", -1)
+                   and t13.get("zipGordu", 0) == t13.get("deneme", -1)
+                   and t13.get("catida", 0) == t13.get("deneme", -1)
                    and t13.get("nisanVar", 0) == t13.get("deneme", -1))
-        detay13 = (f"{t13.get('deneme')} yerden denemede çatıya inen={t13.get('catida')}, 'cek' durumu görülen={t13.get('cekGordu')}, "
-                   f"nişan yüksek hedefte={t13.get('nisanVar')}, en geç iniş={t13.get('enGec', 0):.1f} sn; [bina_h, iniş_kare]={t13.get('ayrinti')}")
-        ekle(13, "Sağ tık basılı yerden yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor", gecti13, detay13, "oyuncu.js")
+        detay13 = (f"{t13.get('deneme')} yerden denemede sallanma={t13.get('sallanGordu')}, "
+                   f"yüksek ankraj={t13.get('yuksekAnkraj')}, zip={t13.get('zipGordu')}, "
+                   f"çatıya inen={t13.get('catida')}, nişan yüksek hedefte={t13.get('nisanVar')}, "
+                   f"en geç iniş={t13.get('enGec', 0):.1f} sn; durumlar={t13.get('durumlar')}, "
+                   f"ankrajlı kare={t13.get('ankrajKare')}, çatı hedefi olmadığı için atlanan bina={t13.get('atlanan', 0)}; [bina_h, sallan, yüksekAnkraj, zip, iniş_kare, maxY, sonY, sonDurum, zipKare]={t13.get('ayrinti')}")
+        ekle("Yerden sağ tık yüksek ankrajla sallanma başlatıyor; E yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor",
+             gecti13, detay13, "oyuncu.js + sehir.js")
 
         # 14-16 — his: kombo, duvarda koşu, mükemmel bırakış
         t14 = cdp.degerlendir(js_test_his(), promise=True) or {}
         gecti14 = t14.get("bitirici", 0) >= 1 and t14.get("komboNo", [])[:4] == [0, 1, 2, 3] and 4 in t14.get("kombo", [])
-        ekle(14, "Sol tık yakında 4 vuruşluk kombo: yumruk komboNo 0-3 ve 'bitirici' olayı", gecti14,
+        ekle("Sol tık yakında 4 vuruşluk kombo: yumruk komboNo 0-3 ve 'bitirici' olayı", gecti14,
              f"komboNo={t14.get('komboNo')}, kombo sayacı={t14.get('kombo')}, bitirici={t14.get('bitirici')}; kaçış tehlike bayrağı={t14.get('tehlike')}, 'kacis' olayı={t14.get('kacis')}", "oyuncu.js")
         gecti15 = t14.get("duvarGordu", 0) >= 1 and t14.get("duvar", 0) >= max(1, t14.get("duvarDeneme", 1) * 2 // 3)
-        ekle(15, "Shift ile duvara koşunca duvarda koşu ve çatıya çıkış ('konus')", gecti15,
+        ekle("Shift ile duvara koşunca duvarda koşu ve çatıya çıkış ('konus')", gecti15,
              f"{t14.get('duvarDeneme')} denemede duvar durumu={t14.get('duvarGordu')}, çatıya çıkan={t14.get('duvar')}, 'konus' olayı={t14.get('konus')}; [bina_h, duvar, çatı, max dikey hız]={t14.get('ayrinti')}", "oyuncu.js")
         gecti16 = t14.get("sallan", 0) > 0  # mükemmel bırakış sayısı zamanlamaya duyarlı: bilgi olarak raporlanır
-        ekle(16, "Havada sağ tık ileri-yukarı ankrajla klasik salınım başlatıyor (mükemmel bırakış sayısı bilgi)", gecti16,
+        ekle("Havada sağ tık ileri-yukarı ankrajla klasik salınım başlatıyor (mükemmel bırakış sayısı bilgi)", gecti16,
              f"{t14.get('mukDeneme')} denemede mükemmel bırakış={t14.get('muk')}, salınım kare sayısı={t14.get('sallan')}, salınım max hız={t14.get('maxSw')} (zamanlamaya duyarlı)", "oyuncu.js")
 
-        # 9 — konsol hataları
-        son = cdp.degerlendir(js_son_konsol(), promise=True)
+        # 21 — efekt API'si (yavasCekim sırasında G.zamanOlcek < 1)
+        print("[bilgi] Efekt API'si deneniyor…")
+        ef = cdp.degerlendir(js_efekt(), promise=True) or {}
+        fonks = ef.get("fonks", {}) if isinstance(ef.get("fonks"), dict) else {}
+        ef_hatalar = list(ef.get("hatalar", []))
+        gecti_ef = bool(ef.get("var") and
+                        all(fonks.get(k) for k in ("sars", "yavasCekim", "vurusDuraklat", "hizBulanikligi", "flas")) and
+                        not ef_hatalar and isinstance(ef.get("minZamanOlcek"), (int, float)) and
+                        ef.get("minZamanOlcek") < 1)
+        detay_ef = (f"fonksiyonlar={fonks}; çağrı hataları={ef_hatalar or 'yok'}; "
+                    f"yavasCekim sırasında en düşük G.zamanOlcek={ef.get('minZamanOlcek')} "
+                    f"({ef.get('ornek')} örnek, {ef.get('gecenOyun', 0):.1f} oyun-sn, {ef.get('neden')})")
+        ekle("Efekt: G.efekt.sars/yavasCekim/vurusDuraklat/hizBulanikligi/flas hatasız; yavasCekim'de G.zamanOlcek<1",
+             gecti_ef, detay_ef, "oyun.js (G.efekt)")
+
+        # 22 — eğitim modu: ?test=1&egitim=1
+        # Ana sayfanın konsol kayıtlarını gezinmeden önce sakla (enjeksiyon yeni belgede sıfırlanır).
+        konsol_once = cdp.degerlendir(js_konsol_durum()) or {}
+        print("[bilgi] Eğitim sayfası açılıyor (?test=1&egitim=1)…")
+        egitim_hata = None
+        egitim_bekle = {}
+        egitim = {}
+        try:
+            # Eğitim sayfası testte düşük kalitede açılsın (yalnız localStorage, oyun kodu değil).
+            cdp.degerlendir("(() => { try { localStorage.setItem('zifir_kalite', 'dusuk'); } catch (e) {} return true; })()")
+            cdp.komut("Page.navigate", {"url": EGITIM_URL})
+            egitim_hazir = bekle(
+                lambda: cdp.degerlendir(
+                    "(() => { const G = window.G; return !!(G && G.t > 0.15 && G.oyuncu && G.oyuncu.konum); })()"
+                ),
+                45, 0.2,
+            )
+            if not egitim_hazir:
+                egitim_hata = "eğitim sayfası 45 sn içinde hazır olmadı"
+            else:
+                cdp.degerlendir(js_hizlandir())
+                egitim_bekle = cdp.degerlendir(js_gt_bekle(KOSUL_EGITIM, 10.0, 120.0), promise=True) or {}
+                egitim = cdp.degerlendir(js_egitim()) or {}
+        except Exception as e:
+            egitim_hata = f"eğitim sayfası açılamadı: {e}"
+        gecti_eg = bool(not egitim_hata and egitim_bekle.get("tamam") and
+                        egitim.get("adim") and egitim.get("egitimde"))
+        if egitim_hata:
+            detay_eg = egitim_hata
+        else:
+            detay_eg = (f"G.gorev.egitimde={egitim.get('egitimde')}, aktif.ad={egitim.get('ad')!r}, "
+                        f"ipucu={egitim.get('ipucu')!r}; bekleme {egitim_bekle.get('gecenOyun', 0):.1f} oyun-sn "
+                        f"({egitim_bekle.get('neden')})")
+        ekle("Eğitim: ?test=1&egitim=1 ile G.gorev.aktif.ad eğitim adımı oluyor", gecti_eg, detay_eg, "gorev.js")
+
+        # 23 — konsol hataları (tüm koşu: ana sayfa + eğitim sayfası + CDP + Chrome stderr)
+        son = cdp.degerlendir(js_son_konsol(), promise=True) or {}
         satirlar: list[str] = []
-        satirlar += ["zifir: " + str(x) for x in son.get("zifirHatalar", [])]
-        satirlar += ["sayfa: " + str(x) for x in son.get("testKonsol", [])]
+        satirlar += ["ana-zifir: " + str(x) for x in konsol_once.get("zifirHatalar", [])]
+        satirlar += ["ana-sayfa: " + str(x) for x in konsol_once.get("testKonsol", [])]
+        satirlar += ["egitim-zifir: " + str(x) for x in son.get("zifirHatalar", [])]
+        satirlar += ["egitim-sayfa: " + str(x) for x in son.get("testKonsol", [])]
         for olay in cdp.olaylar:
             ad = olay.get("method")
             p = olay.get("params", {})
@@ -1072,19 +1458,26 @@ def main() -> int:
                 eslesen.append(temiz)
         # Chrome stderr'de sayfa hataları da görünür; yalnız desene uyanları ekle.
         try:
-            chrome_log.flush()
-            with open(CHROME_LOG, "r", encoding="utf-8", errors="replace") as f:
-                for satir in f:
-                    temiz = satir.strip().replace("\n", " ")
-                    if HATA_DESENI.search(temiz) and temiz not in eslesen:
-                        eslesen.append(temiz)
+            if chrome_log:
+                chrome_log.flush()
+            if chrome_log_yolu and chrome_log_yolu.exists():
+                with open(chrome_log_yolu, "r", encoding="utf-8", errors="replace") as f:
+                    for satir in f:
+                        temiz = satir.strip().replace("\n", " ")
+                        if HATA_DESENI.search(temiz) and temiz not in eslesen:
+                            eslesen.append(temiz)
         except Exception:
             pass
         gecti9 = not eslesen
-        detay9 = "konsolda 'Uncaught' / 'THREE.WebGLProgram' / 'shader' satırı yok" if gecti9 else \
+        detay9 = ("tüm koşuda 'Uncaught' / 'SHADER' / 'is not defined' satırı yok "
+                  "(ana sayfa + eğitim sayfası + CDP + Chrome stderr)") if gecti9 else \
                  f"{len(eslesen)} eşleşen hata satırı: " + " | ".join(eslesen[:3])
-        ekle(9, "Konsolda Uncaught / THREE.WebGLProgram / shader hatası yok", gecti9, detay9,
-             "shader ise sehir/kahraman/arayuz; Uncaught ise ilgili modül")
+        modul9 = "shader ise sehir/kahraman/arayuz/oyun; 'is not defined' ise satırdaki modül"
+        for ad in MODULLER:
+            if any(ad in x for x in eslesen):
+                modul9 = f"{ad}.js (satırda modül adı geçiyor)"
+                break
+        ekle("Konsolda Uncaught / SHADER / is not defined hatası yok (tüm koşu)", gecti9, detay9, modul9)
 
     except Exception as hata:
         fatal = True
@@ -1106,8 +1499,22 @@ def main() -> int:
                     chrome.kill()
                 except Exception:
                     pass
+        if chrome_log:
+            try:
+                chrome_log.close()
+            except Exception:
+                pass
         if profil:
             shutil.rmtree(profil, ignore_errors=True)
+        if sunucu_bizim and sunucu:
+            try:
+                sunucu.terminate()
+                sunucu.wait(timeout=5)
+            except Exception:
+                try:
+                    sunucu.kill()
+                except Exception:
+                    pass
 
     # ---- rapor ----
     toplam = len(sonuclar)
@@ -1120,8 +1527,9 @@ def main() -> int:
     cizgiler.append("# ZİFİR Otomatik Test Raporu")
     cizgiler.append("")
     cizgiler.append(f"- Tarih: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    cizgiler.append(f"- URL: `{OYUN_URL}`")
-    cizgiler.append("- Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`)")
+    cizgiler.append(f"- URL: `{OYUN_URL}` (ana) ve `{EGITIM_URL}` (eğitim)")
+    cizgiler.append(f"- Chrome DevTools portu: `{CDP_PORT}` (socket bind 0 ile otomatik seçildi)")
+    cizgiler.append("- Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`), her koşuda ayrı geçici `--user-data-dir`")
     cizgiler.append(f"- Chrome: `{shutil.which('google-chrome') or '?'}`")
     cizgiler.append(f"- Süre: {time.time() - basla:.1f} sn")
     if os.environ.get("ZIFIR_TEST_ALT") == "1":
@@ -1150,26 +1558,38 @@ def main() -> int:
             if s["gecti"] or s["no"] == 0:
                 continue
             cizgiler.append(f"- **{s['no']}. {s['ad']}** ({s['modul']}): {s['detay']}")
-            tahminler = {
-                1: "Modül dosyası yüklenemedi veya kur() içinde istisna oluştu; `window.__ZIFIR_HATALAR` içeriğine bakın.",
-                2: "Oyuncu fiziği NaN üretti ya da zeminin altına düştü; `oyuncu.js` fizik/çarpışma veya `sehir.js` zeminY.",
-                3: "Test demosu `girdi.js` içinde 6 sn sürüyor; sayfa geç açıldıysa veya ankraj bulunamadıysa sallanma görülmez.",
-                4: "`sehir.js` ışın/AABB verisi boş ya da çarpışma düzeltmesi uygulanmıyor.",
-                5: "`dusman.js` yumruk dinleyicisi hasar uygulamıyor; olay verisi (konum/yon) veya canlı düşman yok.",
-                6: "`gorev.js` küre toplama yarıçapı ya da `oyuncu.js.isinla` konumu güncellemiyor.",
-                7: "`oyuncu.js.hasarAl` koruma koşulu (hasarSure/olmeSure) nedeniyle çağrıyı yutuyor ya da yeniden doğuş zamanlayıcısı çalışmıyor.",
-                8: "requestAnimationFrame hiç çalışmıyor olabilir; render döngüsüne bakın.",
-                9: "Shader derleme hatası veya yakalanmamış istisna; ayrıntı satırındaki modül dosyasına bakın.",
-            }
-            cizgiler.append(f"  - Olası neden: {tahminler.get(s['no'], 'Ayrıntı çıktısına bakın.')}")
+            m = s.get("modul", "")
+            if "kahraman" in m:
+                ip = "GLB/GLTFLoader yolu, ağ isteği veya `SkinnedMesh` oluşturma; `js/kahraman.js`."
+            elif "ses" in m:
+                ip = "`G.ses.cal` / ses dosyası yükleme ve `G.ses.yuklendi`; `js/ses.js`."
+            elif "arayuz" in m:
+                ip = "`G.ayar` varsayılanları veya `G.kaliteAyarla`; `js/arayuz.js` + `js/oyun.js`."
+            elif "gorev" in m:
+                ip = "Eğitim zinciri (`EGITIM` / `egitimAdim`) veya küre toplama; `js/gorev.js`."
+            elif "dusman" in m:
+                ip = "Dron/robot doğma listesi, yumruk hasarı veya mermi havuzu; `js/dusman.js`."
+            elif "sehir" in m:
+                ip = "Işın/AABB verisi veya çarpışma düzeltmesi; `js/sehir.js`."
+            elif "oyuncu" in m:
+                ip = "Fizik/çarpışma, `hasarAl` yeniden doğuşu, çekiş/duvar koşusu veya ışınlama; `js/oyuncu.js`."
+            elif "oyun" in m:
+                ip = "Render döngüsü, `G.efekt`, `G.zamanOlcek` veya `renderer.info`; `js/oyun.js`."
+            else:
+                ip = "Ayrıntı çıktısına ve ilgili modül dosyasına bakın."
+            cizgiler.append(f"  - Olası neden: {ip}")
         cizgiler.append("")
     cizgiler.append("## Notlar")
     cizgiler.append("")
-    cizgiler.append("- Test 8 (kare süresi) 240x135 çizim tamponunda (composer 480x270), bloom ve gölge kapalı olarak ölçülür; swiftshader yazılım render'ı gerçek GPU performansını yansıtmaz.")
-    cizgiler.append("- swiftshader 1280x720'de çok yavaş kaldığından (geliştirme sırasında 0.2-0.8 fps ölçüldü; oyun saati dt=0.05 sınırıyla ilerler) yalnız çizim yükü azaltıldı: composer 480x270 / 240x135 tampon, bloom ve gölge kapalı; gerekirse render çağrısı durduruldu. Oyun kodu/dosyaları değiştirilmedi, fizik ve görev mantığı aynı `guncelle` döngüsüyle çalıştı.")
+    cizgiler.append("- 23 kontrolün tamamı GEÇTİ/KALDI + ayrıntı olarak raporlanır; oyun kodu değiştirilmedi.")
+    cizgiler.append("- Chrome DevTools portu her koşuda `socket.bind(('127.0.0.1', 0))` ile boş porttan seçilir; `--user-data-dir` her koşuda `tempfile.mkdtemp` ile oluşturulur ve `try/finally` içinde Chrome ile birlikte kapatılıp silinir. Böylece eşzamanlı ajanlar 9333 portunda çakışmaz.")
+    cizgiler.append("- Zamanlamaya duyarlı beklemeler oyun saati `G.t` üzerinden yapılır (kahraman GLB ≤15, düşman ≤30, küre ≤3, yeniden doğuş ≤4, efekt ≤1, eğitim ≤10 oyun-sn). Oyun saati üst sınırı aşarsa ilgili kontrol KALDI olur; duvar saati yalnız güvenlik sınırıdır.")
+    cizgiler.append("- Kare süresi kontrolü 80x45 çizim tamponunda (composer 160x90), yalnız temel RenderPass ve gölge kapalı ölçülür; swiftshader yazılım render'ı gerçek GPU performansını yansıtmaz. 5 oyun-sn performans bilgisi `renderer.info.render.calls/triangles` kare ortalamasıdır.")
+    cizgiler.append("- swiftshader + eşzamanlı ajan yükü altında (geliştirme sırasında 0.2-0.8 fps ölçüldü; oyun saati dt=0.05 sınırıyla ilerler) yalnız çizim yükü azaltıldı: 640x360 pencere, composer 160x90 / 80x45 tampon, yalnız RenderPass, bloom ve gölge kapalı; gerekirse render çağrısı durduruldu. Fizik ve görev mantığı aynı `guncelle` döngüsüyle çalıştı.")
     cizgiler.append("- Test demosu `girdi.js` içinde `?test=1` sırasında ilk 6 saniye çalışır.")
-    cizgiler.append("- Konsol taraması sayfa `console.error/warn`, `window.__ZIFIR_HATALAR`, CDP istisnaları ve Chrome stderr üzerinden yapıldı.")
-    cizgiler.append("- Oyun kodu düzeltilmedi; raporlama yapıldı.")
+    cizgiler.append("- Eğitim kontrolü ana sayfa kontrollerinden sonra `?test=1&egitim=1` adresine gezinir; ana sayfanın konsol kayıtları gezinmeden önce saklanır ve eğitim sayfasınınkilerle birleştirilir.")
+    cizgiler.append("- Konsol taraması tüm koşu boyunca sayfa `console.error/warn`, `window.__ZIFIR_HATALAR`, CDP istisnaları ve Chrome stderr üzerinden 'Uncaught' / 'SHADER' / 'is not defined' için yapıldı.")
+    cizgiler.append("- Oyun kodu düzeltilmedi; yalnız sorunlu modül ve ayrıntı raporlandı.")
 
     RAPOR.parent.mkdir(parents=True, exist_ok=True)
     RAPOR.write_text("\n".join(cizgiler) + "\n", encoding="utf-8")
