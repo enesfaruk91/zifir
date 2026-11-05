@@ -231,6 +231,16 @@ function ortamKur() {
 
 // ---- müzik: üç parça, akış, gain ile çapraz geçiş ----
 let gecerli = 'menu', sakinSayac = 0, chaseModu = false, lpBitis = 0;
+// Oyun birden çok sekmede/pencerede açıksa yalnız en son başlayan müzik çalar.
+let baskaSekmeCaliyor = false;
+const sekmeKimlik = Math.random().toString(36).slice(2);
+let muzikKanal = null;
+try {
+  muzikKanal = new BroadcastChannel('zifir_muzik');
+  muzikKanal.onmessage = e => { if (e.data?.basladi && e.data.kimlik !== sekmeKimlik) baskaSekmeCaliyor = true; };
+} catch (e) { /* eski tarayıcı */ }
+function muzikSahiplen() { baskaSekmeCaliyor = false; try { muzikKanal?.postMessage({ basladi: true, kimlik: sekmeKimlik }); } catch (e) {} }
+addEventListener('pointerdown', muzikSahiplen); addEventListener('keydown', muzikSahiplen);
 function muzikHazirla() {
   for (const k of Object.keys(durum.muzik)) {
     const m = durum.muzik[k];
@@ -239,7 +249,7 @@ function muzikHazirla() {
 }
 function muzikGuncelle(G, dt) {
   const t = ctx.currentTime;
-  const calabilir = ctx.state === 'running' && muzikAcik;
+  const calabilir = ctx.state === 'running' && muzikAcik && !document.hidden && !baskaSekmeCaliyor;
   // hedef parça
   let hedef = 'menu';
   if (G.durum === 'oyun' || G.durum === 'duraklat') hedef = chaseModu ? 'chase' : 'oyun';
@@ -251,9 +261,9 @@ function muzikGuncelle(G, dt) {
     const ac = k === hedef && calabilir;
     // 2 sn çapraz geçiş: gain'i dt ile doğrusal kaydır
     m.hedef = ac ? 1 : 0;
-    const hiz = m.hedef ? dt / 1.2 : dt / 0.5; // giden parça hızlı sussun, gelen yumuşak girsin
     m.seviye = m.seviye ?? 0;
-    m.seviye += Math.max(-hiz, Math.min(hiz, m.hedef - m.seviye));
+    // TEK PARÇA: hedef olmayan parça ANINDA susar (üst üste binme yok); hedef 1 sn'de girer
+    if (!ac) m.seviye = 0; else m.seviye = Math.min(1, m.seviye + dt / 1.0);
     // döngü dikişi: sonda ve başta 1.5 sn fade (chase kırpılmış)
     let dikis = 1;
     if (k === 'chase' && m.sure > 5) { const c = m.el.currentTime; dikis = Math.max(0, Math.min(1, c / 1.5, (m.sure - c) / 1.5)); dikis = dikis * dikis * (3 - 2 * dikis); }
