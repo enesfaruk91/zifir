@@ -291,17 +291,26 @@ export function kur(G) {
     l.m.position.copy(nokta).addScaledVector(normal, 0.03);
     l.m.lookAt(TMP.copy(nokta).add(normal)); l.m.scale.setScalar(rnd(0.8, 1.3));
   }
-  let isabetSay = 0, dronYenilenSay = 0;
+  let isabetSay = 0, dronYenilenSay = 0, gudumluSay = 0, gudumluIsabet = 0;
+  const _pw = V();
+  function hedefNokta(e, out) {
+    if (e.dev && e.pil && e.pil.getWorldPosition) return e.pil.getWorldPosition(out);
+    if (e.tur === 'robot') return out.set(e.konum.x, e.konum.y + 1, e.konum.z);
+    if (e.tur === 'dron') return out.copy(e.konum);
+    return merkez(e, out);
+  }
   function mermiAt(v) {
     if (!v || !v.baslangic || !v.yon) return;
     const t = mermiler.find(x => !x.aktif); if (!t) return;
-    t.aktif = true; t.omur = 2.2; t.guc = v.guc || 1; t.hedef = v.hedef || null;
+    t.aktif = true; t.omur = 2; t.guc = v.guc || 1; t.hedef = v.hedef || null; t.dolan = 0; t.dolanHak = 3; t.kilitli = !!v.hedef; if (t.kilitli) gudumluSay++;
     t.hiz.copy(v.yon).normalize().multiplyScalar(90);
     t.bas.copy(v.baslangic);
     t.m.position.copy(v.baslangic); t.m.visible = true; t.m.lookAt(TMP.copy(v.baslangic).add(t.hiz));
   }
   function mermiIsabet(t, e, nokta) {
-    isabetSay++; if (G.test) console.log('[DUSMAN] mermi isabet ' + isabetSay + ', dron yenildi ' + dronYenilenSay);
+    isabetSay++; if (t.kilitli) gudumluIsabet++;
+    if (G.test && t.kilitli) console.log('[DUSMAN] gudumlu atis ' + gudumluSay + ' isabet ' + gudumluIsabet);
+    if (G.test) console.log('[DUSMAN] mermi isabet ' + isabetSay + ', dron yenildi ' + dronYenilenSay);
     jole(nokta, 10, 6);
     G.olay.emit('isabet', { konum: nokta.clone(), tur: e.tur });
     const yon = TMP2.copy(t.hiz).normalize().clone();
@@ -320,12 +329,24 @@ export function kur(G) {
     for (const t of mermiler) {
       if (!t.aktif) continue;
       t.omur -= dt;
-      // hafif güdüm
-      if (t.hedef && t.hedef.canli) {
-        merkez(t.hedef, TMP).sub(t.m.position).normalize();
+      // güçlü güdüm (kilitli atış): hedef ölürse en yakın canlı düşman
+      if (t.hedef && !t.hedef.canli) {
+        let en = 1e9, bu = null;
+        for (const e of liste) if (e.canli) { const q = e.konum.distanceTo(t.m.position); if (q < en) { en = q; bu = e; } }
+        t.hedef = bu; t.dolan = 0;
+      }
+      if (t.hedef) {
+        hedefNokta(t.hedef, TMP).sub(t.m.position);
+        const mes = TMP.length(); TMP.normalize();
+        // binaya çarpacaksa 0.3 sn yukarı dolan
+        if (t.dolan > 0) { t.dolan -= dt; TMP.y += 0.9; TMP.normalize(); }
+        else if (G.sehir?.ankrajBul && t.dolanHak > 0) {
+          const r = G.sehir.ankrajBul(t.m.position, TMP, Math.min(mes, 90 * dt * 3));
+          if (r && r.nokta.distanceTo(t.m.position) < mes - 1) { t.dolan = 0.3; t.dolanHak--; }
+        }
         TMP2.copy(t.hiz).normalize();
         const ac = Math.acos(Math.max(-1, Math.min(1, TMP.dot(TMP2))));
-        if (ac > 1e-3) { const k = Math.min(1, 2.2 * dt / ac); TMP2.lerp(TMP, k).normalize(); t.hiz.copy(TMP2).multiplyScalar(90); }
+        if (ac > 1e-4) { const k = Math.min(1, (12.6 * dt) / ac); TMP2.lerp(TMP, k).normalize(); t.hiz.copy(TMP2).multiplyScalar(90); }
       }
       const adim = 90 * dt;
       KV.copy(t.m.position);
@@ -335,10 +356,10 @@ export function kur(G) {
       let enT = adim;
       for (const e of liste) {
         if (!e.canli) continue;
-        merkez(e, TMP).sub(KV);
+        hedefNokta(e, TMP).sub(KV);
         const pr = TMP.dot(TMP2), c = Math.max(0, Math.min(adim, pr));
         const yk = TMP3.copy(TMP2).multiplyScalar(c).sub(TMP).length();
-        if (yk < e.yr + 0.25 && c <= enT) { enT = c; isabetE = e; }
+        if (yk < (e.dev ? 4 : e.tur === 'dron' ? 1.6 : e.tur === 'robot' ? 1.4 : e.yr + 0.25) && c <= enT) { enT = c; isabetE = e; }
       }
       // bina / zemin
       let duvar = null, dN = null, dT = adim + 1;
