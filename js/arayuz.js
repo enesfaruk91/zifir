@@ -78,6 +78,12 @@ const CSS = `
 @keyframes sek{40%{transform:scale(1.25)}}
 #arayuz .nisan{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:rgba(255,255,255,.4);box-shadow:0 0 4px rgba(0,0,0,.6);transition:all .12s}
 #arayuz .nisan.var{width:26px;height:26px;margin:-13px 0 0 -13px;background:transparent;border:3px solid var(--tur);box-shadow:0 0 16px var(--tur),0 0 6px var(--tur) inset}
+#arayuz .nisan.kilit{width:34px;height:34px;margin:-17px 0 0 -17px;background:transparent;border:3px solid #ff6a3a;box-shadow:0 0 16px #ff6a3a,0 0 6px #ff6a3a inset}
+#arayuz .nisan.kilit::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#ffb08a}
+#arayuz .vurus{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;opacity:0;transition:opacity .25s;pointer-events:none}
+#arayuz .vurus.ac{opacity:1;transition:none}
+#arayuz .vurus::before,#arayuz .vurus::after{content:"";position:absolute;left:50%;top:50%;width:26px;height:3px;margin:-1.5px -13px;background:#fff;box-shadow:0 0 6px #000;transform:rotate(45deg)}
+#arayuz .vurus::after{transform:rotate(-45deg)}
 #arayuz .nisan.var::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:var(--tur2)}
 #arayuz .ok{position:absolute;left:0;top:0;width:0;height:0;transition:opacity .2s;will-change:transform}
 #arayuz .ok svg{position:absolute;left:-26px;top:-26px;width:52px;height:52px;filter:drop-shadow(0 0 8px var(--tur));animation:okn 1s ease-in-out infinite}
@@ -105,15 +111,16 @@ const CSS = `
 #arayuz .devrozet{position:absolute;left:50%;bottom:3vh;transform:translateX(-50%);font-size:min(2.6vh,22px);letter-spacing:.3em;color:var(--tur2);text-shadow:0 0 16px var(--tur);animation:yan .6s infinite}
 `;
 
+let vurus = 0;
 const TUSLAR = [
   ['<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>', 'Yürü'],
   ['<kbd class="tur">Fare</kbd>', 'Etrafa bak'],
-  ['<kbd class="tur">Sol tık</kbd> BASILI', 'Dokunaçla sallan'],
-  ['<kbd class="tur">Sağ tık</kbd>', 'Çekil / uç'],
+  ['<kbd class="tur">Sol tık</kbd>', 'Vur / jöle at (basılı: seri)'],
+  ['<kbd class="tur">Sağ tık</kbd> BASILI', 'Dokunaçla sallan, bırak: fırla'],
   ['<kbd>Space</kbd>', 'Zıpla (havada 2.)'],
   ['<kbd>Shift</kbd>', 'Koş / tırman'],
-  ['<kbd>F</kbd>', 'Jöle yumruğu'],
-  ['<kbd>E</kbd>', 'Dokunaç kamçısı'],
+  ['<kbd>E</kbd>', 'Çekil (zip)'],
+  ['<kbd>F</kbd>', 'Dokunaç kamçısı'],
   ['<kbd>Q</kbd>', 'DEV ZİFİR'],
   ['<kbd>M</kbd> <kbd>Esc</kbd>', 'Ses · Duraklat'],
 ];
@@ -169,6 +176,7 @@ export function kur(G) {
   e.hizc = el('canvas', 'hizc', null, e.hud);
   e.vin = el('div', 'vin', null, e.hud);
   e.nisan = el('div', 'nisan', null, e.hud);
+  e.vurus = el('div', 'vurus', null, e.hud);
   e.ok = el('div', 'ok gizli', OK + '<em></em>', e.hud);
   const sa = el('div', 'sol-alt', '', e.hud);
   e.canK = el('div', 'canK', DAMLA + '<div class="bar can" style="flex:1"><i></i></div>', sa);
@@ -223,6 +231,7 @@ export function kur(G) {
   o.on('gorevBasla', v => baslikGoster('YENİ GÖREV', v?.ad || G.gorev?.aktif?.ad || ''));
   o.on('gorevBitti', v => baslikGoster('GÖREV TAMAM!', v?.ad || ''));
   o.on('kureAlindi', () => { e.kure.classList.remove('sek'); void e.kure.offsetWidth; e.kure.classList.add('sek'); ucus('+1 ✦', null); });
+  o.on('isabet', () => { vurus = 0.15; e.vurus.classList.add('ac'); });
   o.on('robotYenildi', v => ucus('+' + (v?.puan ?? 10), v?.konum));
   o.on('devBasla', () => { e.dev.classList.remove('gizli'); G.arayuz.mesaj('DEV ZİFİR!', 2); });
   o.on('devBit', () => e.dev.classList.add('gizli'));
@@ -266,7 +275,9 @@ export function guncelle(G, dt) {
   if (vurma > 0) { vurma -= dt; if (vurma <= 0) e.vin.classList.remove('vur'); }
 
   // nişan
-  e.nisan.classList.toggle('var', !!oyuncu?.nisanVar);
+  e.nisan.classList.toggle('kilit', !!oyuncu?.nisanHedef);
+  e.nisan.classList.toggle('var', !oyuncu?.nisanHedef && !!oyuncu?.nisanVar);
+  if (vurus > 0) { vurus -= dt; if (vurus <= 0) e.vurus.classList.remove('ac'); }
 
   // görev
   const g = G.gorev?.aktif;

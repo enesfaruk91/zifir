@@ -71,6 +71,8 @@ function mesafeKat(a) {
 // ---- efektler ----
 const SES = {
   atis(k) { sesGur(0.18, 'bandpass', 500, 2600, 3, 0.35 * k); ton('sine', 260, 700, 0.12, 0.12 * k); ton('triangle', 700, 340, 0.1, 0.1 * k, 0.1); },
+  atisJole(k) { ton('sine', 520, 180, 0.07, 0.16 * k); ton('triangle', 300, 520, 0.05, 0.07 * k, 0.03); },
+  isabet(k) { ton('sine', 150, 60, 0.12, 0.5 * k); sesGur(0.04, 'lowpass', 1400, 300, 1, 0.25 * k); },
   yapisma(k) { ton('sine', 210, 60, 0.12, 0.45 * k); sesGur(0.07, 'lowpass', 1800, 300, 1, 0.3 * k); ton('sine', 520, 380, 0.08, 0.1 * k, 0.03); },
   zipla(k) { ton('sine', 240, 520, 0.16, 0.22 * k); sesGur(0.1, 'highpass', 800, 2400, 0.7, 0.07 * k); },
   zip(k) { sesGur(0.4, 'bandpass', 400, 3500, 2, 0.4 * k); ton('sawtooth', 180, 900, 0.3, 0.07 * k); },
@@ -172,6 +174,10 @@ export function kur(G) {
   bagla('hasar', 'hasar', 1); bagla('yenildi', 'yenildi', 1); bagla('dogdu', 'dogdu', 1);
   bagla('robotYenildi', 'robot', 1); bagla('kureAlindi', 'kure', 1);
   bagla('gorevBasla', 'fanfar', 0.7); bagla('gorevBitti', 'gorevBit', 1);
+
+  let jole = 0;
+  o.on('atis', () => { if (jole >= 3) return; jole++; G.ses.cal('atisJole', { siddet: 0.8 }); setTimeout(() => jole--, 90); });
+  bagla('isabet', 'isabet', 1);
 
   G.ses = {
     cal(ad, a = {}) {

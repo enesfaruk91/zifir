@@ -130,8 +130,10 @@ export function guncelle(G, dt) {
     // İlk salınımda yan sokağa bak; sonraki tutunma aynı duvarda kalmasın.
     const donus = Math.max(0, Math.min(t + adim, 1.6) - Math.max(t, 1.1));
     bakX -= donus * (Math.PI / 2) / (0.0023 * 0.5);
-    if (t < 1.65 || (t >= 2.05 && t < 3.8) || (t >= 4.2 && t < 5.8)) simdi.add('Fare0');
-    else simdi.delete('Fare0');
+    if (t < 1.65 || (t >= 2.05 && t < 3.8) || (t >= 4.2 && t < 5.8)) simdi.add('Fare2');
+    else simdi.delete('Fare2');
+    // 2 sn'de bir sahte sol tık (atış akışı testi).
+    if (Math.floor(t / 2) !== Math.floor((t + adim) / 2) || t === 0) simdi.add('Fare0');
     s.demoSure = Math.min(6, t + adim);
   }
   if (!oyun) for (const kod of simdi) if (!KONTROLLER.has(kod)) simdi.delete(kod);
