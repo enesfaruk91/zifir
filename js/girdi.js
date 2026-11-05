@@ -93,6 +93,7 @@ export function kur(G) {
     kilitle() {
       if (G.durum !== 'oyun' || tamEkranIstek) return;
       if (mobil.dokunmatik) {
+        if (window.parent !== window && typeof window.parent.zifirTamEkran === 'function') { window.parent.zifirTamEkran(); return; }
         // Telefon tarayıcısı desteklerse kullanıcı dokunuşunda yatay tam ekran.
         const yatay = () => { try { screen.orientation?.lock?.('landscape')?.catch?.(() => {}); } catch {} };
         if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
@@ -150,7 +151,6 @@ export function guncelle(G, dt) {
   const s = durumlar.get(G);
   if (!s || !G.girdi) return;
   const api = G.girdi;
-  s.mobil.yonDenetle();
   const oyun = G.durum === 'oyun';
   const adim = Math.min(0.05, Math.max(0, Number.isFinite(dt) ? dt : 0));
   if (s.oncekiDurum === 'oyun' && !oyun) G.girdi.serbestBirak();

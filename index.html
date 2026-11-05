@@ -17,6 +17,38 @@
 <body>
 <canvas id="sahne"></canvas>
 <div id="arayuz"></div>
-<script type="module" src="./js/oyun.js"></script>
+<script type="module">
+// Mobil tarayıcı fiziksel yön kilidini reddetse de oyun yatay koordinatlarda çalışır.
+const mobil = matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
+const cocuk = new URLSearchParams(location.search).has('yatay');
+if (mobil && !cocuk && window.parent === window) {
+  document.getElementById('sahne').remove();
+  document.getElementById('arayuz').remove();
+  const cerceve = document.createElement('iframe');
+  cerceve.title = 'ZİFİR yatay oyun';
+  cerceve.allow = 'fullscreen; gamepad';
+  cerceve.allowFullscreen = true;
+  const adres = new URL(location.href); adres.searchParams.set('yatay', '1');
+  cerceve.src = adres.href;
+  cerceve.style.cssText = 'position:fixed;left:0;top:0;border:0;display:block;transform-origin:0 0';
+  document.body.append(cerceve);
+  function boyutla() {
+    const portre = innerHeight > innerWidth;
+    cerceve.style.width = (portre ? innerHeight : innerWidth) + 'px';
+    cerceve.style.height = (portre ? innerWidth : innerHeight) + 'px';
+    cerceve.style.transform = portre ? 'translateX(' + innerWidth + 'px) rotate(90deg)' : 'none';
+  }
+  addEventListener('resize', boyutla); boyutla();
+  window.zifirTamEkran = async () => {
+    try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.(); } catch {}
+    try { await screen.orientation?.lock?.('landscape'); } catch {}
+    boyutla();
+  };
+  // İlk dokunuşta; tarayıcı fullscreen için gerçek kullanıcı hareketi ister.
+  document.addEventListener('pointerdown', window.zifirTamEkran, { once: true });
+} else {
+  await import('./js/oyun.js');
+}
+</script>
 </body>
 </html>

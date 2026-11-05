@@ -24,7 +24,7 @@ export function kurMobil(G) {
   const bilgi=document.createElement('details');bilgi.className='zifir-kol';bilgi.hidden=true;
   bilgi.innerHTML='<summary></summary><p>Sol çubuk: hareket · Sağ çubuk: bakış<br>×: zıpla · ○: çekil · □: kamçı · △: Dev<br>L2: ağı tut · R2: saldırı · L1: koş / süzül · R1: dalış<br>Options: duraklat / devam · Share: ses<br>Menü: yön tuşları gezin · × seç · ○ geri<br>Dokunmatik: sol daire hareket, sağ daire bakış. Ağ ve süzülme düğmelerini basılı tut.</p>';
   document.body.append(bilgi);
-  const yonUyari=document.createElement('div');yonUyari.hidden=true;yonUyari.textContent='↻ Telefonu yatay çevir';yonUyari.style.cssText='position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:82;padding:18px;border-radius:16px;background:#141b36ee;color:#fff;font:700 20px system-ui;text-align:center;pointer-events:none;max-width:80vw';document.body.append(yonUyari);
+
   function dinle(h,a,f,o){h.addEventListener(a,f,o);dinleyiciler.push([h,a,f,o]);}
   function kodGuncelle(k){const varmi=[...sahip.values()].some(v=>v===k);if(varmi&&!tuslar.has(k)){tuslar.add(k);yeni.add(k);}else if(!varmi&&tuslar.delete(k))birak.add(k);}
   function dugme(el,k){
@@ -48,8 +48,7 @@ export function kurMobil(G) {
   dinle(window,'touchmove',e=>{if(dokunmatik&&G.durum==='oyun')e.preventDefault();},{passive:false});
   let once=false,eskiTouch='';
   return {dokunmatik,tuslar,yeni,birak,eksen,bakis,temizle,
-    yonDenetle(){if(dokunmatik&&innerHeight>innerWidth&&G.durum==='oyun')G.durum='duraklat';},
-    guncelle(kol){const portre=dokunmatik&&innerHeight>innerWidth;yonUyari.hidden=!portre;if(portre&&G.durum==='oyun')G.durum='duraklat';const oyun=G.durum==='oyun';katman.hidden=!(dokunmatik&&oyun&&!portre);if(once&&!oyun)temizle();if(dokunmatik&&oyun&&!once){eskiTouch=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';}if(dokunmatik&&once&&!oyun)document.documentElement.style.touchAction=eskiTouch;once=oyun;bilgi.hidden=!kol&&!dokunmatik;bilgi.querySelector('summary').textContent=kol?'🎮 Oyun kolu bağlı · kontroller':'Dokunmatik kontroller';},
-    kapat(){temizle();if(dokunmatik&&once)document.documentElement.style.touchAction=eskiTouch;for(const [h,a,f,o]of dinleyiciler)h.removeEventListener(a,f,o);katman.remove();bilgi.remove();yonUyari.remove();stil.remove();}
+    guncelle(kol){const oyun=G.durum==='oyun';katman.hidden=!(dokunmatik&&oyun);if(once&&!oyun)temizle();if(dokunmatik&&oyun&&!once){eskiTouch=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';}if(dokunmatik&&once&&!oyun)document.documentElement.style.touchAction=eskiTouch;once=oyun;bilgi.hidden=!kol&&!dokunmatik;bilgi.querySelector('summary').textContent=kol?'🎮 Oyun kolu bağlı · kontroller':'Dokunmatik kontroller';},
+    kapat(){temizle();if(dokunmatik&&once)document.documentElement.style.touchAction=eskiTouch;for(const [h,a,f,o]of dinleyiciler)h.removeEventListener(a,f,o);katman.remove();bilgi.remove();stil.remove();}
   };
 }

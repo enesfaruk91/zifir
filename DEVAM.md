@@ -2,7 +2,7 @@
 
 Önceki yarım işler tamamlandı. Ağ bakış yönüne ve gösterilen önizlemeye gider; jöle kanat/dalış, C/Ctrl girişi, izinli tam ekran klavye kilidi ve ana menü/duraklatma ÇIKIŞ eklendi. YARIM_IS.patch korundu.
 
-Ek düzeltmeler: Dev modelinde kemik/aksesuar ölçek bozulması ve büyüme geçişi; composer çözünürlüğü, gereksiz resize temizlemesi ve FPS süre ölçümü. PS4 standart kontrol eşlemesi ve Android Chrome için yatay dokunmatik kumanda eklendi.
+Ek düzeltmeler: Dev modelinde kemik/aksesuar ölçek bozulması ve büyüme geçişi; composer çözünürlüğü, gereksiz resize temizlemesi ve FPS süre ölçümü. PS4 standart kontrol eşlemesi ve Android Chrome için yatay dokunmatik kumanda eklendi. OYNA dokunuşunda tam ekran/yön kilidi istenir; dik tutulan telefonda da oyun kendi görüntüsünü yataya çevirir.
 
 Tam oyun kabulü: 23/23, HATA 0. Yeni regresyonlar ve son yayın bilgisi RAPOR/entegrasyon.md içinde. İnceleme: RAPOR/ag_nisan.md, jole_poz.md, performans.md, kontroller.md, test_bot.md.
 
