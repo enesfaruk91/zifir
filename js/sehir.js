@@ -34,6 +34,7 @@ const sec = (dizi) => dizi[Math.floor(R() * dizi.length)];
 const CS = 32, G0 = -1280, GN = 80; // 2560 m: uzak silüet halkası da çarpışır
 const C = [];          // düz: minx,miny,minz,maxx,maxy,maxz
 const CT = [];         // 0 bina, 1 ince (lamba; yalnız ankraj), 2 havadaki (kiriş; zeminY'ye girmez)
+const esyaHucre = new Map();
 let CB = null, CTT = null, hucre = null, damga = null, damgaNo = 0;
 
 function colEkle(x, y0, z, gx, h, gz, tur = 0) {
@@ -926,39 +927,50 @@ void main(){
     const z0 = Math.max(0, gi(pz - r)), z1 = Math.min(GN - 1, gi(pz + r));
     damgaNo++;
     const r2 = r * r;
-    for (let a = x0; a <= x1; a++) for (let b = z0; b <= z1; b++) {
-      const l = hucre[b * GN + a];
-      for (let k = 0; k < l.length; k++) {
-        const i = l[k];
-        if (CTT[i] === 1 || damga[i] === damgaNo) continue;
-        damga[i] = damgaNo;
-        const o = i * 6;
-        const cx = px < CB[o] ? CB[o] : (px > CB[o + 3] ? CB[o + 3] : px);
-        const cy = py < CB[o + 1] ? CB[o + 1] : (py > CB[o + 4] ? CB[o + 4] : py);
-        const cz = pz < CB[o + 2] ? CB[o + 2] : (pz > CB[o + 5] ? CB[o + 5] : pz);
+    const kutu = (B, o) => {
+                const cx = px < B[o] ? B[o] : (px > B[o + 3] ? B[o + 3] : px);
+        const cy = py < B[o + 1] ? B[o + 1] : (py > B[o + 4] ? B[o + 4] : py);
+        const cz = pz < B[o + 2] ? B[o + 2] : (pz > B[o + 5] ? B[o + 5] : pz);
         const dx = px - cx, dy = py - cy, dz = pz - cz;
         const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 >= r2) continue;
+        if (d2 >= r2) return;
         let ex, ey, ez;
         if (d2 > 1e-12) {
           const d = Math.sqrt(d2), f = (r - d) / d;
           ex = dx / d; ey = dy / d; ez = dz / d;
           px += dx * f; py += dy * f; pz += dz * f;
         } else { // merkez kutunun içinde: en yakın yüzden it
-          const m = [px - CB[o], CB[o + 3] - px, py - CB[o + 1], CB[o + 4] - py, pz - CB[o + 2], CB[o + 5] - pz];
+          const m = [px - B[o], B[o + 3] - px, py - B[o + 1], B[o + 4] - py, pz - B[o + 2], B[o + 5] - pz];
           let bi = 0; for (let q = 1; q < 6; q++) if (m[q] < m[bi]) bi = q;
           ex = ey = ez = 0;
           switch (bi) {
-            case 0: ex = -1; px = CB[o] - r; break;
-            case 1: ex = 1; px = CB[o + 3] + r; break;
-            case 2: ey = -1; py = CB[o + 1] - r; break;
-            case 3: ey = 1; py = CB[o + 4] + r; break;
-            case 4: ez = -1; pz = CB[o + 2] - r; break;
-            default: ez = 1; pz = CB[o + 5] + r;
+            case 0: ex = -1; px = B[o] - r; break;
+            case 1: ex = 1; px = B[o + 3] + r; break;
+            case 2: ey = -1; py = B[o + 1] - r; break;
+            case 3: ey = 1; py = B[o + 4] + r; break;
+            case 4: ez = -1; pz = B[o + 2] - r; break;
+            default: ez = 1; pz = B[o + 5] + r;
           }
         }
         nx += ex; ny += ey; nz += ez; vurdu = true;
-        if (Math.abs(ey) < 0.7) duvar = true;
+      if (Math.abs(ey) < 0.7) duvar = true;
+    };
+    for (let a = x0; a <= x1; a++) for (let b = z0; b <= z1; b++) {
+      const l = hucre[b * GN + a];
+      for (let k = 0; k < l.length; k++) {
+        const i = l[k];
+        if (CTT[i] === 1 || damga[i] === damgaNo) continue;
+        damga[i] = damgaNo;
+        kutu(CB, i * 6);
+      }
+    }
+    // çatı eşyaları: yalnız oyuncunun hücresindeki küçük liste
+    {
+      const el = esyaHucre.get(gi(px) * 1000 + gi(pz));
+      if (el) for (let k = 0; k < el.length; k++) {
+        const B = el[k];
+        if (Math.abs(px - (B[0] + B[3]) / 2) > r + 6 || Math.abs(pz - (B[2] + B[5]) / 2) > r + 6) continue;
+        kutu(B, 0);
       }
     }
     const duzeltme = new THREE.Vector3(px - konum.x, py - konum.y, pz - konum.z);
@@ -982,14 +994,54 @@ void main(){
     return { nokta: new THREE.Vector3(bas.x + dx * t, bas.y + dy * t, bas.z + dz * t), normal: n };
   }
 
+  // çatı eşya yuvaları (kenar şeridi; orta bölge boş) + collider listesi
+  const catiYuva = new Map();
+  { const R2 = rng(777);
+    for (const b of cati) {
+      if (b.h < 12) continue;
+      const ax = b.gx / 2 - 1.8, az = b.gz / 2 - 1.8;
+      if (ax < 0.5 || az < 0.5) continue;
+      const tg = b.tier ? Math.min(b.gx, b.gz) * 0.55 : 0;
+      const n = 1 + Math.floor(R2() * 3), L = [];
+      for (let i = 0; i < n; i++) for (let t = 0; t < 8; t++) {
+        const e = R2() * Math.min(2.2, Math.min(ax, az) * 0.5), sg = R2() < 0.5 ? -1 : 1;
+        let x, z;
+        if (R2() < 0.5) { x = sg * (ax - e); z = (R2() * 2 - 1) * az; } else { z = sg * (az - e); x = (R2() * 2 - 1) * ax; }
+        if (b.tier && Math.abs(x) <= tg / 2 + 1.6 && Math.abs(z) <= tg / 2 + 1.6) continue;
+        if (L.some(q => Math.hypot(q.x - x, q.z - z) < 3)) continue;
+        L.push({ x, z, yaw: Math.floor(R2() * 4) * Math.PI / 2 + (R2() - 0.5) * 0.3, s: R2(), t: R2() }); break;
+      }
+      catiYuva.set(b, L);
+    }
+  }
+  function catiKutuEkle(b, x, z, yaw, hx, hy, hz) {
+    const c = Math.abs(Math.cos(yaw)), sn = Math.abs(Math.sin(yaw));
+    const ex = c * hx + sn * hz, ez = sn * hx + c * hz;
+    const B = [x - ex, b.h, z - ez, x + ex, b.h + hy, z + ez];
+    for (let a = gi(B[0]); a <= gi(B[3]); a++) for (let q = gi(B[2]); q <= gi(B[5]); q++) {
+      const key = a * 1000 + q; let l = esyaHucre.get(key); if (!l) esyaHucre.set(key, l = []); l.push(B);
+    }
+  }
+  function catidenUzak(b, x, z, m) {
+    const L = catiYuva.get(b); if (!L) return true;
+    for (const q of L) if (Math.hypot(b.x + q.x - x, b.z + q.z - z) < m) return false;
+    return true;
+  }
+
   function rastgeleCati() {
-    for (let d = 0; d < 40; d++) {
+    let en = null, enD = -1;
+    for (let d = 0; d < 80; d++) {
       const b = binalar[Math.floor(Math.random() * binalar.length)];
       if (b.h < 12) continue;
       const x = b.x + (Math.random() - 0.5) * b.gx * 0.44;
       const z = b.z + (Math.random() - 0.5) * b.gz * 0.44;
-      if (Math.abs(zeminY(x, z) - b.h) < 0.01) return new THREE.Vector3(x, b.h, z);
+      if (Math.abs(zeminY(x, z) - b.h) >= 0.01) continue;
+      if (catidenUzak(b, x, z, 4)) return new THREE.Vector3(x, b.h, z);
+      const L = catiYuva.get(b); let m = 1e9;
+      for (const q of L) m = Math.min(m, Math.hypot(b.x + q.x - x, b.z + q.z - z));
+      if (m > enD) { enD = m; en = new THREE.Vector3(x, b.h, z); }
     }
+    if (en) return en;
     return new THREE.Vector3(0, 0, 0);
   }
 
@@ -1064,7 +1116,7 @@ void main(){
   };
 
   // dahili durum
-  kur._d = { saatUygula, gok, ay, kubbe, suMat, atesBocek, ikazMatA, ikazMatB, aracGuncelle, sehirkam, ayYon, sayac: 0, bina: binalar.length, tabelaSay };
+  kur._d = { saatUygula, gok, ay, kubbe, suMat, atesBocek, ikazMatA, ikazMatB, aracGuncelle, sehirkam, ayYon, catiYuva, catiKutuEkle, sayac: 0, bina: binalar.length, tabelaSay };
   {
     let a0 = 'alacakaranlik';
     try { const v = JSON.parse(localStorage.getItem('zifir_ayar') || '{}').saat; if (SAAT[v]) a0 = v; } catch (e) {}
@@ -1380,20 +1432,19 @@ async function proKur(G, c) {
   const catiBoyut = (m) => (m ? m.boyut : null);
   for (const b of cati) {
     if (b.h < 12) continue;
-    const tg = b.tier ? Math.min(b.gx, b.gz) * 0.55 : 0;
     const ax = b.gx / 2 - 1.8, az = b.gz / 2 - 1.8;
-    const bos = (x, z) => !b.tier || Math.abs(x) > tg / 2 + 1.6 || Math.abs(z) > tg / 2 + 1.6;
-    const nokta = () => { for (let t = 0; t < 8; t++) { const x = rp(-ax, ax), z = rp(-az, az); if (bos(x, z)) return [x, z]; } return null; };
-    const n = 1 + Math.floor(RP() * 3);
+    const yuva = d.catiYuva.get(b); if (!yuva) continue;
+    const n = yuva.length;
     for (let i = 0; i < n; i++) {
-      const p = nokta(); if (!p) continue;
-      const r = RP(), yaw = Math.floor(RP() * 4) * Math.PI / 2 + rp(-0.15, 0.15);
+      const y0 = yuva[i], p = [y0.x, y0.z];
+      const r = y0.t, yaw = y0.yaw;
       if (!ornekCati && !b.tier && b.h > 30 && b.h < 90 && Math.abs(b.x) < 250 && Math.abs(b.z) < 150 && r < 0.74) ornekCati = { b, x: b.x + p[0], z: b.z + p[1] };
-      if (r < 0.28 && kAC) kAC.ekle(b.x + p[0], b.h, b.z + p[1], yaw, rp(0.9, 1.3));
-      else if (r < 0.46 && kACS) kACS.ekle(b.x + p[0], b.h, b.z + p[1], yaw, rp(0.9, 1.3));
+      const kol = (m, sc) => { if (m && m.boyut) d.catiKutuEkle(b, b.x + p[0], b.z + p[1], yaw, m.boyut.x * sc / 2, m.boyut.y * sc, m.boyut.z * sc / 2); };
+      if (r < 0.28 && kAC) { const sc = rp(0.9, 1.3); kAC.ekle(b.x + p[0], b.h, b.z + p[1], yaw, sc); kol(catiM[0], sc); }
+      else if (r < 0.46 && kACS) { const sc = rp(0.9, 1.3); kACS.ekle(b.x + p[0], b.h, b.z + p[1], yaw, sc); kol(catiM[1], sc); }
       else if (r < 0.62 && kAnt) kAnt.ekle(b.x + p[0], b.h, b.z + p[1], yaw, rp(0.8, 1.4));
       else if (r < 0.74 && kBoru) kBoru.ekle(b.x + p[0], b.h, b.z + p[1], yaw, rp(1, 1.6));
-      else if (r < 0.88 && kTank && b.gx > 10) kTank.ekle(b.x + p[0], b.h, b.z + p[1], yaw, rp(1, 1.5));
+      else if (r < 0.88 && kTank && b.gx > 10) { const sc = rp(1, 1.5); kTank.ekle(b.x + p[0], b.h, b.z + p[1], yaw, sc); kol(catiM[5], sc); }
       else if (kCit) { // çatı kenarı çiti: iki üç parça
         const kx = RP() < 0.5, sg = RP() < 0.5 ? 1 : -1, ln = 2.6, m2 = 2 + Math.floor(RP() * 3);
         const a0 = rp(-0.5, 0.5) * (kx ? ax : az);
