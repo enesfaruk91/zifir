@@ -34,6 +34,7 @@ export function kur(G) {
     get yaw() { return s.yaw; }, set yaw(d) { if (Number.isFinite(d)) s.yaw = d; },
     get pitch() { return s.pitch; }, set pitch(d) { if (Number.isFinite(d)) s.pitch = d; },
     get ankraj() { return s.ankraj; },
+    get sallanSayisi() { return s.sallanma; },
     hasarAl(miktar, kaynakKonum) {
       if (G.durum !== 'oyun' || s.olmeSure > 0 || s.hasarSure > 0 || !Number.isFinite(miktar) || miktar <= 0) return;
       const hasar = miktar * (p.dev ? 0.5 : 1);

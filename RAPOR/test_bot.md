@@ -1,10 +1,10 @@
 # ZİFİR Otomatik Test Raporu
 
-- Tarih: 2026-11-05 14:06:46
+- Tarih: 2026-11-05 14:28:29
 - URL: `http://127.0.0.1:8765/?test=1`
 - Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`)
 - Chrome: `/usr/bin/google-chrome`
-- Süre: 42.3 sn
+- Süre: 73.2 sn
 - Çalıştırma: otomatik yeniden deneme sarmalayıcısı içinde (yalnız altyapı hatasında tekrar)
 - Betik: `test/test_oyun.py` (oyun kodu değiştirilmedi)
 
@@ -14,10 +14,10 @@
    - Ayrıntı: 8/8 modül yüklü
    - İlgili modül: oyun.js + tüm modüller
 2. **GEÇTİ** — 10 sn boyunca konum NaN değil ve y > -5
-   - Ayrıntı: 79 örnek / 10.4 sn; NaN=0; y min=15.48399543762207, max=16.335813051282038; y<=-5 örnek=0
+   - Ayrıntı: 883 örnek / 10.0 sn; NaN=0; y min=0, max=31.30842022675739; y<=-5 örnek=0
    - İlgili modül: oyuncu.js
 3. **GEÇTİ** — Test demosunda sallanma en az bir kez gerçekleşti
-   - Ayrıntı: 'sallan' durumu 3/79 örnekte görüldü (100 ms aralık)
+   - Ayrıntı: 'sallan'/'cek' durumu 285/883 örnekte görüldü (G.t'ye göre 10.0 oyun-sn); oyuncu toplam sallanma sayacı=3
    - İlgili modül: girdi.js (test demosu) + oyuncu.js (sallanma)
 4. **GEÇTİ** — ankrajBul yukarı-ileri ışında nokta buluyor; carpis iç noktayı dışarı itiyor
    - Ayrıntı: ankraj=bulundu (1 bina denemesi); carpis itme=9.050 m, dışarı=True, normal={'x': -1, 'y': 0, 'z': 0}, duvar=True
@@ -26,21 +26,33 @@
    - Ayrıntı: dron can 40→15, canlı True→True, aktif 3→3
    - İlgili modül: dusman.js
 6. **GEÇTİ** — isinla(küre konumu) görev/küre sayısını artırıyor
-   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); konum={'x': 184.22942025292483, 'y': 73.36175537109375, 'z': -91.39771270751953}
+   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); konum={'x': -197.44264221191406, 'y': 21.78092432978166, 'z': -362.8052062988281}
    - İlgili modül: gorev.js + oyuncu.js.isinla
 7. **GEÇTİ** — hasarAl(1000) sonrası 4 sn içinde can dolu ve konum geçerli
-   - Ayrıntı: 'yenildi' alındı (1 çağrı); 2.4 sn sonra can=100/100, konum={'x': 153.78262104538433, 'y': 29.29930305480957, 'z': -322.08095722495403}, geçerli=True
+   - Ayrıntı: 'yenildi' alındı (1 çağrı); 2.2 sn sonra can=100/100, konum={'x': -83.38129824939112, 'y': 31.671116473725252, 'z': -298.6212861392149}, geçerli=True
    - İlgili modül: oyuncu.js
 8. **GEÇTİ** — Ortalama kare süresi ölçüldü (yalnız bilgi)
-   - Ayrıntı: ortalama 351.65 ms/kare (~2.8 fps), 10 kare / 3516 ms; composer 480x270, çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 16.4 fps (render kapalı).
+   - Ayrıntı: ortalama 213.33 ms/kare (~4.7 fps), 15 kare / 3200 ms; composer 480x270, çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 21.4 fps (render kapalı).
    - İlgili modül: oyun.js render döngüsü
+10. **GEÇTİ** — 30 binaya yerden 15 m/s koşuda oyuncu hiçbir bina kutusunun içine girmiyor
+   - Ayrıntı: 30 bina × 2 sn yerden 15 m/s koşu = 3600 örnek; bina içinde ayak/bel/baş noktası=0
+   - İlgili modül: oyuncu.js + sehir.js
+11. **GEÇTİ** — Sallanma demosunda 10 sn boyunca bina içinde değil (simülasyon + canlı demo)
+   - Ayrıntı: 6 çatı denemesi × 10 sn (sallan+zıpla+E) = 3600 örnek; bina içi=0, sallan/cek örneği=709, max hız=472; canlı demo 10 oyun-sn bina içi örnek=0
+   - İlgili modül: oyuncu.js + sehir.js
+12. **GEÇTİ** — Görsel bina instance matrisleri fizik kutularıyla uyuşuyor
+   - Ayrıntı: görsel instance=657, binalar[].kutu=311; kutusu eşleşmeyen=0, fizik katı olmayan görsel nokta=0
+   - İlgili modül: sehir.js
+13. **GEÇTİ** — Sağ tık basılı yerden yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor
+   - Ayrıntı: 6 yerden denemede çatıya inen=6, 'cek' durumu görülen=6, nişan yüksek hedefte=6, en geç iniş=4.0 sn; [bina_h, iniş_kare]=[[66, 218], [62, 218], [78, 243], [45, 174], [45, 178], [51, 190]]
+   - İlgili modül: oyuncu.js
 9. **GEÇTİ** — Konsolda Uncaught / THREE.WebGLProgram / shader hatası yok
    - Ayrıntı: konsolda 'Uncaught' / 'THREE.WebGLProgram' / 'shader' satırı yok
    - İlgili modül: shader ise sehir/kahraman/arayuz; Uncaught ise ilgili modül
 
 ## Özet
 
-**TOPLAM 9/9**
+**TOPLAM 13/13**
 
 ## Notlar
 
