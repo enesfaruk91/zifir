@@ -802,7 +802,7 @@ export function kur(G) {
     on('mukemmelBirakis', () => { g.flip = 0.0001; g.flipT = 0.75; });
     on('konus', () => { if (!g.tek) tekBaslat('Jump_Land', 1.1, 0.5, 'tam'); });
 
-    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvar', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur' };
+    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvarKos', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur' };
     const esle = (ad) => {
       if (ESLE[ad]) return ESLE[ad];
       const l = String(ad).toLowerCase();
@@ -841,7 +841,7 @@ export function kur(G) {
       const girdi = d !== g.d; if (girdi) { g.d = d; g.dt = 0; }
       g.dt += dt;
       const havada = !son.yerde;
-      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9;
+      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9 && d !== 'duvar' && d !== 'duvarKos'; // duvarda grup yönü oyuncu.js'in (duvara dik): ezme, yuvarlanma yok
       if (egik) g.yuvarlan = -1;
       if (g.yuvarlan > 0) { g.yuvarlan -= 1; if (g.yuvarlan <= 0) { g.yuvarlan = -2; tekBaslat('Roll', 1.5, 0.55, 'tam'); } }
       if (g.inis > 0) g.inis -= dt;
@@ -862,7 +862,8 @@ export function kur(G) {
         case 'kos': lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = hs < 7.5 ? kisitla(hs / 4.4, 0.85, 1.7) : kisitla(hs / 8, 0.85, 1.6); break;
         case 'zipla': if (g.dt < sure('Jump_Start') * 0.85 && havada) { lo = 'Jump_Start'; tekr = true; } else lo = 'Jump_Loop'; break;
         case 'dus': case 'sallan': case 'zip': case 'sapan': lo = 'Jump_Loop'; break;
-        case 'duvar': lo = 'Idle_Loop'; loTs = 0.6; break;
+        case 'duvar': if (sp > 0.3) { lo = 'Crouch_Fwd_Loop'; loTs = kisitla(sp / 1.6, 0.6, 1.8); } else lo = 'Crouch_Idle_Loop'; break;
+        case 'duvarKos': lo = 'Sprint_Loop'; loTs = kisitla(sp / 8, 0.8, 1.6); break;
         case 'yumruk': case 'kamci': case 'hasar': if (hs > 0.8) { lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = kisitla(hs / 5, 0.8, 1.5); } break;
       }
       if (devK > 0.01 && (d === 'yuru' || d === 'kos')) loTs *= 1 - 0.4 * devK;
@@ -941,16 +942,17 @@ export function kur(G) {
           kolUzat(T, hed, 0.85);
         }
         ek(solT.uyluk, -0.2, 0, 0.1); ek(sagT.uyluk, 0.2, 0, -0.1);
+      } else if (d === 'duvarKos') {
+        // duvarda ayakta koşu: grup duvara dik (yerel yukarı = duvar normali); yalnız hafif öne eğim
+        pivH = 0.18;
       } else if (d === 'duvar') {
-        // dört uzuvlu tırmanış: gövde duvara eğik, kollar dönüşümlü yukarı uzanır, dizler dönüşümlü kalkar
-        pivH = 0.22; kokZh = 0.1;
-        const hizli = son.durum === 'duvarKos' ? 1.5 : 1, ac = sp > 0.4 ? 1 : 0.15;
+        // örümcek tırmanışı: Crouch_Fwd tabanı; kollar öne uzanıp dönüşümlü yüzeye yapışır (eller yüzeye yakın)
+        pivH = 0.12;
+        const ac = sp > 0.3 ? 1 : 0.2;
         for (let i = 0; i < 2; i++) {
-          const T = i ? sagT : solT, f = ph * hizli + i * Math.PI, sn = Math.sin(f), yk = (0.5 + 0.5 * sn) * ac;
-          hed.copy(bw(T.ust, omuzP)).addScaledVector(upV, 0.35 + 0.65 * yk).addScaledVector(fwd, 0.55).addScaledVector(yanSol, (i ? -1 : 1) * 0.12);
-          kolUzat(T, hed, 1);
-          const bk = (0.5 - 0.5 * sn) * ac;
-          ek(T.uyluk, -0.35 - 1.0 * bk, (i ? -1 : 1) * 0.15 * bk, 0); ek(T.baldir, 0.5 + 1.0 * bk, 0, 0);
+          const T = i ? sagT : solT, f = ph + i * Math.PI, sn = Math.sin(f), ur = (0.5 + 0.5 * sn) * ac;
+          hed.copy(bw(T.ust, omuzP)).addScaledVector(fwd, 0.55 + 0.35 * ur).addScaledVector(upV, -0.5 + 0.18 * (1 - ur) * ac).addScaledVector(yanSol, (i ? -1 : 1) * 0.28);
+          kolUzat(T, hed, 0.9);
         }
       } else if (d === 'kamci' && ten.kamci.aktif) {
         kolUzat(solT, ten.kamci.bit, 0.9);
@@ -974,7 +976,7 @@ export function kur(G) {
         }
         if (p > 1) g.slam = -1;
       }
-      if (devK > 0.01 && !egik && d !== 'sallan' && d !== 'zip' && d !== 'duvar') pivH += 0.16 * devK;
+      if (devK > 0.01 && !egik && d !== 'sallan' && d !== 'zip' && d !== 'duvar' && d !== 'duvarKos') pivH += 0.16 * devK;
       if (g.kick >= 0 && !havada) {
         const k = Math.sin(kisitla(g.kick / 0.5, 0, 1) * Math.PI);
         ek(sagT.uyluk, -1.6 * k, 0, 0); ek(sagT.baldir, 0.5 * k, 0, 0);
@@ -1018,8 +1020,8 @@ export function kur(G) {
   } catch (e) { console.warn('[ZIFIR] GLTFLoader hata:', e); }
 
   // ---------- test sürücüsü ----------
-  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan'];
-  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0] };
+  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan', 'duvarKos'];
+  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0], duvarKos: [0, 6] };
   function testSur(dt) {
     const sabit = QS.get('durum');
     const idx = sabit ? SIRA.indexOf(sabit) : Math.floor(G.t) % SIRA.length;
@@ -1030,7 +1032,7 @@ export function kur(G) {
     ayarla({ durum: d, hiz: tmpV.set(0, h[1], h[0]), yerde: d === 'dur' || d === 'yuru' || d === 'kos' || d === 'yumruk' || d === 'kamci' || d === 'hasar' || d === 'dogus' });
     if (QS.has('slam') && !testSur.s) { testSur.s = 1; G.olay?.emit?.('bitirici', {}); }
     if (QS.has('dev')) { son.dev = true; ct = Math.max(ct, 0.999); }
-    if (izole) { grup.position.x = 0; grup.position.y = 0; grup.quaternion.identity(); }
+    if (izole) { grup.position.x = 0; grup.position.y = QS.has('yat') ? 1.3 : 0; grup.quaternion.identity(); if (QS.has('yat')) grup.quaternion.setFromAxisAngle(AX, -parseFloat(QS.get('yat')) * Math.PI / 180); }
     grup.position.z += h[0] * dt;
     if (d === 'duvar') grup.position.y += 0;
     // her zaman bir dokunaç göster
@@ -1052,7 +1054,7 @@ export function kur(G) {
     // faz
     if (d === 'yuru') ph += dt * Math.min(12, 6 + hs * 0.5);
     else if (d === 'kos') ph += dt * Math.min(17, 10 + hs * 0.35);
-    else if (d === 'duvar') ph += dt * (sp > 0.3 ? Math.min(9, 2 + sp * 0.9) : 0.5);
+    else if (d === 'duvar' || d === 'duvarKos') ph += dt * (d === 'duvarKos' ? 1.6 : 1) * (sp > 0.3 ? Math.min(9, 2 + sp * 0.9) : 0.5);
     else ph += dt * 0.5;
 
     poz(d, t, durumT, vy);

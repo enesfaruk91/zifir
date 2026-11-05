@@ -17,3 +17,13 @@
 
 ## Dogrulanmadi
 - Gercek oyunda kamera/iz; yalniz SwiftShader goruntuleri. Arkadan bakista iz seritleri halen gorunur (bilerek). Sapan pozu tek acidan bakildi; el degisim gecisi hareket olarak izlenmedi.
+
+## Duvar (grup duvara dik)
+- duvar/duvarKos'ta grup yonu ezilmez (egik algisi kapali, yuvarlanma yok). duvarKos: Sprint_Loop (timeScale hiza gore) + hafif one egim. duvar: Crouch_Fwd_Loop (durunca Crouch_Idle_Loop) + kollar one uzanip donusumlu yuzeye yapisir. Eski Idle+ofset pozu kaldirildi. Ayrilinca durum Jump_Loop'a duser (0.17 sn gecis).
+- Test: `&durum=duvar|duvarKos&yat=90` (grup 90 derece yatar). Goruntu alindi; yalniz tek acidan, hareketli gecis izlenmedi.
+
+## Not (ana oturum ipucu)
+- Aydinlatma goruntusunde kamera onunde catida beyaz kutu (sehir.js catı esyasi) var; kahramanla ilgili degil, sehir.js'te ayrica cozulecek.
+
+## Dogrulama
+- test_oyun.py 23/23 (flock ile). Git: yalniz js/kahraman.js + bu rapor.
