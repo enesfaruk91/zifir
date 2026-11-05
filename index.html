@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZİFİR</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05030a;color:#fff;font-family:system-ui,"Segoe UI",Ubuntu,sans-serif}
+  #sahne{position:fixed;inset:0;display:block}
+  #arayuz{position:fixed;inset:0;pointer-events:none;user-select:none}
+  #arayuz .tik{pointer-events:auto}
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="sahne"></canvas>
+<div id="arayuz"></div>
+<script type="module" src="./js/oyun.js"></script>
+</body>
+</html>
