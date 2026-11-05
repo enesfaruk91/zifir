@@ -1,8 +1,55 @@
-// Ses — tamamen prosedürel WebAudio. Dosya yok. SOZLESME §4.
-let ctx = null, ana = null, sik = null, muzikKaz = null, sfxKaz = null;
-let gurultu = null, ruzgar = null, dron = null;
-let sessizMi = false, muzikIstek = false, muzikCaliyor = false;
+// Ses — gerçek CC0 kayıtlar (Kenney, OGA; assets/LISANS.md) + yedek prosedürel sentez. SOZLESME §4, §6.3.
+let ctx = null, ana = null, sik = null, muzikKaz = null, sfxKaz = null, ambKaz = null, muzikLP = null;
+let gurultu = null, dron = null;
+let sessizMi = false, muzikAcik = true;
 let G_ = null, kureZincir = 0, kureSon = -10;
+const TAMPON = {};            // ad -> AudioBuffer
+const DOSYA = {};             // ad -> yol
+const durum = { yuklendi: false, toplam: 0, ok: 0, hata: [], muzik: {} };
+const SEV = { ana: 1, muzik: 1, efekt: 1 };
+const MAX_SES = 16, TEKRAR_MS = 50;
+let aktifSes = 0; const sonCalma = {};
+
+const KOK = 'assets/ses/';
+const liste = (klasor, adlar) => adlar.forEach(a => { DOSYA[a] = KOK + klasor + '/' + a + '.ogg'; });
+const dizi = (ad, n = 5) => Array.from({ length: n }, (_, i) => ad + '_00' + i);
+liste('impact', [...dizi('impactPunch_medium'), ...dizi('impactPunch_heavy'), ...dizi('impactSoft_medium'), ...dizi('impactSoft_heavy'),
+  ...dizi('impactMetal_heavy'), ...dizi('impactMetal_medium'), ...dizi('impactPlate_medium'), ...dizi('impactPlate_light'), ...dizi('impactGeneric_light'), ...dizi('footstep_concrete')]);
+liste('arayuz', ['select_001', 'select_002', 'select_003', 'confirmation_001', 'confirmation_002', 'back_001', 'back_002', 'error_001', 'tick_001', 'toggle_001']);
+liste('ortam', ['ruzgar', 'sehir_sokak']);
+const MUZIK = { menu: 'lights_at_night', oyun: 'cyberpunk_beauty', chase: 'chase' };
+
+const sec = (dz) => dz[Math.floor(Math.random() * dz.length)];
+const rastPerde = (p = 0.08) => 1 + (Math.random() * 2 - 1) * p;
+
+async function yukle() {
+  const tum = Object.keys(DOSYA);
+  durum.toplam = tum.length + Object.keys(MUZIK).length;
+  await Promise.all(tum.map(async ad => {
+    try {
+      const r = await fetch(DOSYA[ad]);
+      if (r.status !== 200) throw new Error('HTTP ' + r.status);
+      const ab = await r.arrayBuffer();
+      TAMPON[ad] = await ctx.decodeAudioData(ab);
+      durum.ok++;
+    } catch (e) { durum.hata.push(ad + ': ' + (e?.message || e)); }
+  }));
+  // müzik: akış (HTMLAudio) — bellek için decode edilmez, üstveri okunur
+  await Promise.all(Object.keys(MUZIK).map(k => new Promise(res => {
+    const yol = KOK + 'muzik/' + MUZIK[k] + '.ogg';
+    fetch(yol, { method: 'HEAD' }).then(r => {
+      if (r.status !== 200) { durum.hata.push(MUZIK[k] + ': HTTP ' + r.status); return res(); }
+      const el = new Audio(); el.preload = 'auto'; el.loop = true; el.src = yol; el.crossOrigin = 'anonymous';
+      setTimeout(() => { if (!durum.muzik[k]) { durum.hata.push(MUZIK[k] + ': metadata zaman aşımı'); res(); } }, 8000);
+      const bitti = () => { durum.ok++; res(); };
+      el.addEventListener('loadedmetadata', () => { durum.muzik[k] = { el, sure: el.duration, g: null, hedef: 0 }; bitti(); }, { once: true });
+      el.addEventListener('error', () => { durum.hata.push(MUZIK[k] + ': decode hatası'); res(); }, { once: true });
+    }).catch(e => { durum.hata.push(MUZIK[k] + ': ' + e.message); res(); });
+  })));
+  durum.yuklendi = true;
+  muzikHazirla(); ortamKur();
+  console.log('[SES] yüklendi ' + durum.ok + '/' + durum.toplam + ' (200 + decode)' + (durum.hata.length ? ' HATA: ' + durum.hata.join(' | ') : ' hata yok'));
+}
 
 function baslat() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -13,23 +60,42 @@ function baslat() {
   sik.threshold.value = -16; sik.knee.value = 14; sik.ratio.value = 5; sik.attack.value = 0.004; sik.release.value = 0.2;
   ana = ctx.createGain(); ana.gain.value = sessizMi ? 0 : 0.8;
   ana.connect(sik); sik.connect(ctx.destination);
-  sfxKaz = ctx.createGain(); sfxKaz.gain.value = 0.9; sfxKaz.connect(ana);
-  muzikKaz = ctx.createGain(); muzikKaz.gain.value = 0.16; muzikKaz.connect(ana);
-  // beyaz/pembe gürültü tamponu
+  sfxKaz = ctx.createGain(); sfxKaz.connect(ana);
+  ambKaz = ctx.createGain(); ambKaz.connect(ana);
+  muzikLP = ctx.createBiquadFilter(); muzikLP.type = 'lowpass'; muzikLP.frequency.value = 20000;
+  muzikKaz = ctx.createGain(); muzikLP.connect(muzikKaz); muzikKaz.connect(ana);
   const n = ctx.sampleRate * 2, b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
   let b0 = 0; for (let i = 0; i < n; i++) { const w = Math.random() * 2 - 1; b0 = 0.97 * b0 + 0.03 * w; d[i] = w * 0.5 + b0 * 3; }
   gurultu = b;
-  ruzgarKur(); dronKur();
-  if (muzikIstek) muzikBaslat();
+  dronKur();
+  yukle();
 }
 
-function ruzgarKur() {
-  const s = ctx.createBufferSource(); s.buffer = gurultu; s.loop = true;
-  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 300; f.Q.value = 0.7;
-  const g = ctx.createGain(); g.gain.value = 0;
-  s.connect(f); f.connect(g); g.connect(sfxKaz); s.start();
-  ruzgar = { f, g };
+// ---- gerçek kayıt çalma ----
+// o: {vol, perde, degisim, lp, hp, gec, hedef, ad(tekrar anahtarı)}
+function kayit(adlar, o = {}) {
+  const ad = Array.isArray(adlar) ? sec(adlar) : adlar;
+  const buf = TAMPON[ad]; if (!buf || !ctx) return false;
+  const nowMs = performance.now(), anahtar = o.anahtar || ad;
+  if (nowMs - (sonCalma[anahtar] || -1e9) < TEKRAR_MS) return true;
+  if (aktifSes >= MAX_SES) return true;
+  sonCalma[anahtar] = nowMs; aktifSes++;
+  const t = ctx.currentTime + (o.gec || 0);
+  const s = ctx.createBufferSource(); s.buffer = buf;
+  s.playbackRate.value = (o.perde || 1) * rastPerde(o.degisim ?? 0.05);
+  let son = s;
+  if (o.hp) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = o.hp; son.connect(f); son = f; }
+  if (o.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; son.connect(f); son = f; }
+  const g = ctx.createGain(); g.gain.value = o.vol ?? 1; son.connect(g); g.connect(o.hedef || sfxKaz);
+  s.onended = () => { aktifSes--; };
+  s.start(t);
+  return true;
 }
+const slap = (k, hafif = 1) => kayit(['impactSoft_medium_000', 'impactSoft_medium_001', 'impactSoft_medium_002', 'impactSoft_medium_003', 'impactSoft_medium_004'],
+  { vol: 0.9 * k, perde: 1.35 * hafif, degisim: 0.08, lp: 2600, anahtar: 'slap' });
+const SENT_KOMBO = ['impactPunch_medium_000', 'impactPunch_medium_001', 'impactPunch_medium_002', 'impactPunch_medium_003'];
+
+// ---- yardımcılar (yedek sentez) ----
 function dronKur() {
   const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 95;
   const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = 97.5;
@@ -107,56 +173,107 @@ const SES = {
   tik(k) { ton('sine', 900, 1200, 0.06, 0.12 * k); },
 };
 
-// ---- müzik: gece synthwave, Am F C G, 100 BPM ----
-const BPM = 100, ADIM = 60 / BPM / 4;
-const AKOR = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
-const KOK = [33, 29, 36, 31];
-let sonraki = 0, adim = 0, zamanlayici = null;
-const mf = n => 440 * Math.pow(2, (n - 69) / 12);
 
-function mNota(tip, f, t, sure, tepe, kes, atak = 0.01) {
-  const o = ctx.createOscillator(); o.type = tip; o.frequency.value = f;
-  const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = kes;
-  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(tepe, t + atak); g.gain.exponentialRampToValueAtTime(0.0001, t + sure);
-  o.connect(fl); fl.connect(g); g.connect(muzikKaz); o.start(t); o.stop(t + sure + 0.05);
+// ---- gerçek kayıtlı sürümler: kayıt yoksa yukarıdaki sentez çalışır ----
+const SENTEZ = { ...SES };
+const gercek = (ad, f) => { SES[ad] = (k, a) => { if (!f(k, a || {})) SENTEZ[ad]?.(k, a); }; };
+const ON = (n) => dizi(n);
+gercek('atis', k => { slap(k, 1.0); sesGur(0.18, 'bandpass', 500, 2600, 3, 0.18 * k); return TAMPON.impactSoft_medium_000 != null; });
+gercek('atisJole', k => { slap(0.8 * k, 1.25); return TAMPON.impactSoft_medium_000 != null; });
+gercek('yapisma', k => kayit(ON('impactSoft_heavy'), { vol: 0.9 * k, perde: 1.15, degisim: 0.08, lp: 3000, anahtar: 'yapisma' }));
+gercek('isabet', k => kayit(ON('impactSoft_medium'), { vol: 0.9 * k, perde: 1.1, degisim: 0.08, lp: 3800, anahtar: 'isabet' }) && kayit(ON('impactPlate_light'), { vol: 0.35 * k, perde: 1.1, anahtar: 'isabet2' }));
+gercek('yere', k => kayit(ON('impactSoft_heavy'), { vol: 0.9 * k, perde: 0.75, degisim: 0.06, anahtar: 'yere' }) && kayit(ON('footstep_concrete'), { vol: 0.5 * k, perde: 0.8, anahtar: 'yere2' }));
+gercek('konus', k => kayit(ON('footstep_concrete'), { vol: 0.8 * k, perde: 0.9, anahtar: 'konus' }));
+gercek('robot', k => kayit(ON('impactMetal_heavy'), { vol: 0.95 * k, perde: 0.85, degisim: 0.1, anahtar: 'robot' }) &&
+  (kayit(ON('impactMetal_medium'), { vol: 0.6 * k, gec: 0.06, perde: 1.1, degisim: 0.15, anahtar: 'robot2' }), kayit(ON('impactPlate_medium'), { vol: 0.5 * k, gec: 0.14, perde: 0.9, degisim: 0.15, anahtar: 'robot3' }), SENTEZ.robot(k * 0.5), true));
+gercek('arayuz_sec', k => kayit(['select_001', 'select_002', 'select_003'], { vol: 0.8, perde: 1, degisim: 0.03, anahtar: 'ui_sec' }));
+gercek('arayuz_onay', k => kayit(['confirmation_001', 'confirmation_002'], { vol: 0.9, degisim: 0.02, anahtar: 'ui_onay' }));
+gercek('arayuz_geri', k => kayit(['back_001', 'back_002'], { vol: 0.8, degisim: 0.02, anahtar: 'ui_geri' }));
+SENTEZ.arayuz_sec = () => ton('sine', 900, 1200, 0.06, 0.1); SENTEZ.arayuz_onay = () => { ton('sine', 660, 660, 0.1, 0.12); ton('sine', 990, 990, 0.14, 0.12, 0.08); }; SENTEZ.arayuz_geri = () => ton('sine', 500, 300, 0.1, 0.1);
+SES.arayuz_hata = () => kayit(['error_001'], { vol: 0.7, anahtar: 'ui_hata' });
+
+// yumruk: komboNo'ya göre farklı kayıt; 3 = bitirici (ağır + alçak bas)
+SES.yumruk = (k, a) => {
+  const no = Math.max(0, Math.min(3, a?.komboNo ?? 0));
+  const ok = no >= 3
+    ? kayit(ON('impactPunch_heavy'), { vol: 1.0 * k, perde: 0.8, degisim: 0.04, anahtar: 'yumruk' })
+    : kayit(['impactPunch_medium_00' + no], { vol: (0.75 + no * 0.08) * k, perde: 1 + no * 0.06, degisim: 0.04, anahtar: 'yumruk' });
+  if (!ok) return SENTEZ.yumruk(k);
+  if (no >= 3) bas(k);
+};
+function bas(k) { ton('sine', 90, 32, 0.45, 0.7 * k, 0, sfxKaz, 0.004); sesGur(0.25, 'lowpass', 600, 80, 1, 0.25 * k); }
+SES.bitirici = (k) => { kayit(ON('impactPunch_heavy'), { vol: 1.0 * k, perde: 0.7, degisim: 0.03, anahtar: 'bitirici' }); bas(k * 1.1); if (TAMPON.impactMetal_heavy_000) kayit(ON('impactMetal_heavy'), { vol: 0.4 * k, perde: 0.7, gec: 0.03, anahtar: 'bitirici2' }); };
+SES.vuus = (k) => { sesGur(0.6, 'bandpass', 300, 3200, 1.5, 0.3 * k, 0, sfxKaz, 0.15); ton('sine', 160, 70, 0.5, 0.15 * k); };
+SES.kaciste = (k) => { sesGur(0.35, 'bandpass', 4200, 500, 2, 0.3 * k); ton('sine', 300, 800, 0.25, 0.1 * k); };
+SES.kombo = (k, a) => {
+  const sayi = a?.sayi ?? 0;
+  const nota = sayi >= 20 ? [0, 4, 7, 12, 16] : sayi >= 10 ? [0, 4, 7, 12] : [0, 4, 7];
+  nota.forEach((n, i) => { const f = 659 * Math.pow(2, n / 12); ton('triangle', f, f, 0.22, 0.14 * k, i * 0.06); ton('sine', f * 2, f * 2, 0.18, 0.06 * k, i * 0.06); });
+};
+SES.cek = (k) => { slap(0.8 * k, 1.1); SENTEZ.zip(0.5 * k); };
+SES.numara = (k) => SENTEZ.tik(k);
+
+
+// ---- ortam: rüzgâr + şehir sokak döngüleri ----
+let ruzgar = null, sehir = null;
+function dongu(ad, hedef) {
+  const buf = TAMPON[ad]; if (!buf) return null;
+  const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true;
+  const g = ctx.createGain(); g.gain.value = 0;
+  let son = s, f = null;
+  if (hedef === 'lp') { f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500; s.connect(f); son = f; }
+  son.connect(g); g.connect(ambKaz); s.start(0, Math.random() * Math.max(1, buf.duration - 1));
+  return { g, f };
 }
-function mGur(t, sure, tip, f, tepe) {
-  const s = ctx.createBufferSource(); s.buffer = gurultu;
-  const fl = ctx.createBiquadFilter(); fl.type = tip; fl.frequency.value = f;
-  const g = ctx.createGain(); g.gain.setValueAtTime(tepe, t); g.gain.exponentialRampToValueAtTime(0.0001, t + sure);
-  s.connect(fl); fl.connect(g); g.connect(muzikKaz); s.start(t, Math.random()); s.stop(t + sure + 0.05);
+function ortamKur() {
+  ruzgar = dongu('ruzgar', 'lp'); sehir = dongu('sehir_sokak', null);
 }
-function adimCal(i, t) {
-  const bar = Math.floor(i / 16) % 4, a = i % 16, akor = AKOR[bar];
-  // bas: sekizlik, sinkoplu
-  if (a % 2 === 0) mNota('sawtooth', mf(KOK[bar] + (a === 6 || a === 14 ? 12 : 0)), t, ADIM * 1.7, 0.55, 380);
-  // arpej: onaltılık, hafif gecikme hissi
-  const n = akor[[0, 1, 2, 1][a % 4]] + 12 + (a % 8 >= 4 ? 12 : 0);
-  mNota('square', mf(n), t, ADIM * 1.4, 0.13, 1600, 0.004);
-  if (a % 4 === 0) akor.forEach(x => mNota('sawtooth', mf(x), t, ADIM * 3.8, 0.05, 700, 0.15)); // pad
-  // davul
-  if (a % 4 === 0) { const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
-    g.gain.setValueAtTime(0.7, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g); g.connect(muzikKaz); o.start(t); o.stop(t + 0.25); }
-  if (a === 4 || a === 12) { mGur(t, 0.16, 'bandpass', 1800, 0.35); mNota('triangle', 190, t, 0.1, 0.2, 800); }
-  if (a % 2 === 1) mGur(t, 0.04, 'highpass', 7000, 0.12);
-  // melodi: iki barda bir hafif zil
-  if (a === 0 && bar % 2 === 0) mNota('sine', mf(akor[2] + 24), t, ADIM * 7, 0.12, 4000, 0.02);
+
+// ---- müzik: üç parça, akış, gain ile çapraz geçiş ----
+let gecerli = 'menu', sakinSayac = 0, chaseModu = false, lpBitis = 0;
+function muzikHazirla() {
+  for (const k of Object.keys(durum.muzik)) {
+    const m = durum.muzik[k];
+    try { const src = ctx.createMediaElementSource(m.el); m.g = ctx.createGain(); m.g.gain.value = 0; src.connect(m.g); m.g.connect(muzikLP); } catch (e) { m.g = null; }
+  }
 }
-function zamanla() {
-  if (!ctx || !muzikCaliyor) return;
-  while (sonraki < ctx.currentTime + 0.25) { adimCal(adim, sonraki); sonraki += ADIM; adim++; }
+function muzikGuncelle(G, dt) {
+  const t = ctx.currentTime;
+  const calabilir = ctx.state === 'running' && muzikAcik;
+  // hedef parça
+  let hedef = 'menu';
+  if (G.durum === 'oyun' || G.durum === 'duraklat') hedef = chaseModu ? 'chase' : 'oyun';
+  if (G.durum === 'duraklat') hedef = gecerli === 'menu' ? 'oyun' : gecerli;
+  gecerli = hedef;
+  const duraklat = G.durum === 'duraklat' ? 0.4 : 1;
+  for (const k of Object.keys(durum.muzik)) {
+    const m = durum.muzik[k]; if (!m.g) continue;
+    const ac = k === hedef && calabilir;
+    // 2 sn çapraz geçiş: gain'i dt ile doğrusal kaydır
+    const hiz = dt / 2;
+    m.hedef = ac ? 1 : 0;
+    m.seviye = m.seviye ?? 0;
+    m.seviye += Math.max(-hiz, Math.min(hiz, m.hedef - m.seviye));
+    // döngü dikişi: sonda ve başta 1.5 sn fade (chase kırpılmış)
+    let dikis = 1;
+    if (k === 'chase' && m.sure > 5) { const c = m.el.currentTime; dikis = Math.max(0, Math.min(1, c / 1.5, (m.sure - c) / 1.5)); dikis = dikis * dikis * (3 - 2 * dikis); }
+    m.g.gain.value = m.seviye * m.seviye * dikis * 0.45 * duraklat;
+    if (m.seviye > 0.001 && m.el.paused && calabilir) m.el.play().catch(() => { });
+    else if (m.seviye <= 0.001 && !m.el.paused) m.el.pause();
+  }
+  // vuuş lowpass: 0.6 sn
+  if (lpBitis > t) muzikLP.frequency.setTargetAtTime(20000, lpBitis - 0.45, 0.15);
 }
-function muzikBaslat() {
-  if (muzikCaliyor || !ctx) return;
-  muzikCaliyor = true; sonraki = ctx.currentTime + 0.08; adim = 0;
-  muzikKaz.gain.cancelScheduledValues(ctx.currentTime);
-  muzikKaz.gain.setTargetAtTime(0.16, ctx.currentTime, 0.5);
-  zamanlayici = setInterval(zamanla, 80);
+function muzikVuus() {
+  if (!ctx || !muzikLP) return;
+  const t = ctx.currentTime;
+  muzikLP.frequency.cancelScheduledValues(t);
+  muzikLP.frequency.setValueAtTime(muzikLP.frequency.value, t);
+  muzikLP.frequency.linearRampToValueAtTime(450, t + 0.08);
+  muzikLP.frequency.setTargetAtTime(20000, t + 0.6, 0.25);
+  lpBitis = 0;
 }
-function muzikDur() {
-  muzikCaliyor = false; clearInterval(zamanlayici); zamanlayici = null;
-}
+
 
 export function kur(G) {
   G_ = G;
@@ -164,7 +281,7 @@ export function kur(G) {
   addEventListener('pointerdown', ilk, true); addEventListener('keydown', ilk, true);
   addEventListener('keydown', e => { if (e.code === 'KeyM' && !e.repeat) G.ses.sessiz(!sessizMi); });
 
-  const bagla = (olay, ses, kar) => G.olay.on(olay, v => G.ses.cal(ses, { konum: v?.konum, siddet: kar }));
+  const bagla = (olay, ses, kar) => G.olay.on(olay, v => G.ses.cal(ses, { konum: v?.konum, siddet: kar, komboNo: v?.komboNo, sayi: v?.sayi }));
   const o = G.olay;
   o.on('sallanBasla', () => { G.ses.cal('atis'); setTimeout(() => G.ses.cal('yapisma'), 120); });
   bagla('sallanBit', 'sallanBit', 1);
@@ -174,6 +291,11 @@ export function kur(G) {
   bagla('hasar', 'hasar', 1); bagla('yenildi', 'yenildi', 1); bagla('dogdu', 'dogdu', 1);
   bagla('robotYenildi', 'robot', 1); bagla('kureAlindi', 'kure', 1);
   bagla('gorevBasla', 'fanfar', 0.7); bagla('gorevBitti', 'gorevBit', 1);
+  bagla('bitirici', 'bitirici', 1); bagla('cek', 'cek', 1); bagla('konus', 'konus', 1); bagla('numara', 'numara', 1);
+  o.on('kombo', v => { if ([5, 10, 20].includes(v?.sayi)) G.ses.cal('kombo', { sayi: v.sayi }); });
+  const vuus = () => { G.ses.cal('vuus'); muzikVuus(); };
+  o.on('mukemmelBirakis', vuus);
+  o.on('kacis', () => { G.ses.cal('kaciste'); muzikVuus(); });
 
   let jole = 0;
   o.on('atis', () => { if (jole >= 3) return; jole++; G.ses.cal('atisJole', { siddet: 0.8 }); setTimeout(() => jole--, 90); });
@@ -183,30 +305,55 @@ export function kur(G) {
     cal(ad, a = {}) {
       if (!ctx || sessizMi || ctx.state !== 'running') return;
       const f = SES[ad]; if (!f) return;
-      try { f((a.siddet ?? 1) * mesafeKat(a)); } catch (e) { /* ses hatası oyunu durdurmasın */ }
+      try { f((a.siddet ?? 1) * mesafeKat(a), a); } catch (e) { /* ses hatası oyunu durdurmasın */ }
     },
-    muzik(acik) {
-      muzikIstek = !!acik;
-      if (!ctx) return;
-      if (acik) muzikBaslat(); else muzikDur();
-    },
+    muzik(acik) { muzikAcik = !!acik; },
     sessiz(b) {
       sessizMi = !!b;
-      if (ana) ana.gain.setTargetAtTime(sessizMi ? 0 : 0.8, ctx.currentTime, 0.05);
+      if (ana) ana.gain.setTargetAtTime(sessizMi ? 0 : 0.8 * SEV.ana, ctx.currentTime, 0.05);
       G.arayuz?.mesaj?.(sessizMi ? 'Ses kapalı (M)' : 'Ses açık (M)', 1.5);
     },
+    seviye(a, m, e) { SEV.ana = a ?? 1; SEV.muzik = m ?? 1; SEV.efekt = e ?? 1; },
     get sessizMi() { return sessizMi; },
+    arayuzSes: true,
+    get yuklendi() { return durum.yuklendi; },
+    get durumu() { return durum; },
   };
 }
 
 export function guncelle(G, dt) {
-  if (!ctx || !ruzgar) return;
+  if (!ctx) return;
   const t = ctx.currentTime;
+  const ay = G.ayar;
+  const sa = ay?.sesAna ?? SEV.ana, sm = ay?.sesMuzik ?? SEV.muzik, se = ay?.sesEfekt ?? SEV.efekt;
+  if (ana) ana.gain.setTargetAtTime(sessizMi ? 0 : 0.8 * sa, t, 0.05);
+  sfxKaz.gain.value = 0.9 * se; ambKaz.gain.value = se;
+  muzikKaz.gain.value = sm;
   const oyunda = G.durum === 'oyun';
+  const gercekDt = G.gercekDt ?? dt;
+  // dinamik müzik: >=3 yakın düşman veya patron
+  if (oyunda) {
+    let n = 0;
+    if (G.dusman?.liste && G.oyuncu?.konum) for (const d of G.dusman.liste) if (d.canli && d.konum && d.konum.distanceTo(G.oyuncu.konum) < 45) n++;
+    const patron = /Patron/i.test(G.gorev?.aktif?.ad || '');
+    if (n >= 3 || patron) { chaseModu = true; sakinSayac = 0; }
+    else if (chaseModu) { sakinSayac += gercekDt; if (sakinSayac > 6) chaseModu = false; }
+  } else { chaseModu = false; sakinSayac = 0; }
+  if (durum.yuklendi) muzikGuncelle(G, gercekDt);
+  // rüzgâr (kayıt) hıza göre; yükseklik: şehir ambiyansı azalır
   const hiz = oyunda && G.oyuncu?.hiz ? G.oyuncu.hiz.length() : 0;
   const k = Math.min(1, Math.max(0, (hiz - 6) / 40));
-  ruzgar.g.gain.setTargetAtTime(k * k * 0.5, t, 0.15);
-  ruzgar.f.frequency.setTargetAtTime(250 + k * 2400, t, 0.15);
+  const duraklat = G.durum === 'duraklat' ? 0.4 : 1;
+  const y = G.oyuncu?.konum?.y ?? 0;
+  if (ruzgar) {
+    const yuk = Math.min(1, Math.max(0, y / 120));
+    ruzgar.g.gain.setTargetAtTime((0.08 + k * k * 0.9 + yuk * 0.25) * duraklat * (oyunda || G.durum === 'duraklat' ? 1 : 0.2), t, 0.2);
+    ruzgar.f.frequency.setTargetAtTime(350 + k * 7000, t, 0.2);
+  }
+  if (sehir) {
+    const az = 1 - Math.min(1, Math.max(0, (y - 5) / 130));
+    sehir.g.gain.setTargetAtTime((0.12 + 0.55 * az) * duraklat, t, 0.4);
+  }
   // dron vızıltısı: en yakın canlı dron
   let yak = 1e9;
   if (oyunda && G.dusman?.liste && G.oyuncu?.konum) {
@@ -215,6 +362,4 @@ export function guncelle(G, dt) {
   const dk = yak < 45 ? (1 - yak / 45) : 0;
   dron.g.gain.setTargetAtTime(dk * dk * 0.09, t, 0.2);
   dron.o.frequency.setTargetAtTime(90 + dk * 25 + Math.sin(G.t * 7) * 3, t, 0.1);
-  // duraklatınca müzik kısılsın
-  muzikKaz.gain.setTargetAtTime(G.durum === 'duraklat' ? 0.06 : 0.16, t, 0.2);
 }
