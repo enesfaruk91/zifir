@@ -20,7 +20,7 @@
 - RX 550 gerçek FPS ve elde oynanış ölçülmedi; başsız SwiftShader performansı donanım ölçümü değildir.
 - Chrome klavye kilidi için JavaScript tam ekranı ve izin gerekir: https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock . İzin vermeyen ortamda Ctrl+W için mutlak garanti yoktur; C güvenli dalış tuşudur.
 - `YARIM_IS.patch` korundu. DEVAM'da eski “git'e eklenmedi” diye anılan hikâye/UI görselleri zaten takipteydi; tekrar ekleme gerekmedi.
-- Commit/stash yapılmadı; mevcut değişiklikler diff üzerinden incelenebilir.
+- Yayın kodu `b259a89` kaydında; stash yapılmadı.
 
 ## Son kapsam
 - Dev: tam kemik bağ matrisi, uniform kök büyümesi ve orantılı dokunaç; 6+4 faz GLB testi geçti.
@@ -28,3 +28,5 @@
 - PS4 eşlemeleri ve Android Chrome yatay iki çubuk/dokunmatik aksiyonlar eklendi; mobil11/11, desktop5/5, 740×360 yatay11/11 sentetik testler geçti.
 - Son tam oyun suite **23/23, HATA0**; çatı çekişi6/6 ve gerçek çatı inişi6/6. C ve iki Ctrl bas/bırak giriş akışı ve gerçek Chrome pencere çıkışı da geçti.
 - GitHub Pages yayını: https://enesfaruk91.github.io/zifir/ ; kaynak https://github.com/enesfaruk91/zifir .
+
+Canlı yayın doğrulandı: HTTP200, 8modül + gerçek GLB,740×360 yatay dokunmatik kumanda görünür, hata0. Ayrıntılar yayin.md.
