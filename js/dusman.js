@@ -25,6 +25,7 @@ export function kur(G) {
   const mPasKoyu = new THREE.MeshStandardMaterial({ color: 0x7a3512, roughness: 0.8, metalness: 0.5 });
   const mGoz = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe2a8, emissiveIntensity: 0.2, roughness: 0.3 });
   const mBebek = new THREE.MeshBasicMaterial({ color: 0x1a0f20 });
+  const mPilHale = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x40ffc0), transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   const mPil = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x66ffcc).multiplyScalar(1.1), toneMapped: false });
   const mTurunc = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(0.85) });
   const mDron = new THREE.MeshStandardMaterial({ color: 0xa8481a, roughness: 0.75, metalness: 0.5 });
@@ -123,8 +124,10 @@ export function kur(G) {
         e.tek = ['wheel_backLeft', 'wheel_backRight', 'wheel_frontLeft', 'wheel_frontRight'].map(n => m.getObjectByName(n)).filter(Boolean);
       }
       if (e.dev) {                                // sırttaki parlayan pil (zayıf nokta) — gövde kemiğine bağlı
-        const pil = new THREE.Mesh(gKutu, mPil); pil.scale.set(1.0, 1.4, 0.3);
-        w.add(pil); pil.position.set(0, k.boy * 0.6, -0.95);
+        // George sırtı: yerel z ~ -0.48 (bbox ölçümü), göğüs/sırt y ~ 1.6; büyük ve görünür.
+        const pil = new THREE.Mesh(gKutu, mPil); pil.scale.set(0.62, 0.8, 0.2);
+        w.add(pil); pil.position.set(0, 1.6, -0.58);
+        const hale = new THREE.Mesh(gKutu, mPilHale); hale.scale.set(1.7, 1.5, 3.2); pil.add(hale);
         e.pilBaz = pil.scale.clone();
         e.pil.visible = false; e.pil = pil; pil.visible = true; e.pil.userData.gercek = true;
       }
@@ -527,7 +530,7 @@ export function kur(G) {
       patlat(TMP3, e.dev ? 3.5 : e.tur === 'kamyonet' ? 2 : 1, e.konum.y);
     }
     G.olay.emit('robotYenildi', { konum: e.konum.clone(), tur: e.tur, dev: e.dev });
-    G.oyuncu?.gucEkle?.(e.dev ? 50 : 15);
+    G.oyuncu?.gucEkle?.(e.dev ? 50 : e.tur === 'dron' ? 20 : 15);
   }
   function dusenleriGuncelle(dt) {
     for (const e of liste) {
@@ -565,12 +568,16 @@ export function kur(G) {
     if (e.can <= 0) yen(e);
   }
 
-  G.olay.on('devBasla', () => { devAcik = true; });
+  G.olay.on('devBasla', () => {
+    devAcik = true;
+    const p = oyuncuKonum();                    // yakın dronlar 1 sn sersemler
+    for (const e of liste) if (e.canli && e.tur === 'dron' && e.konum.distanceTo(p) < 25) e.sersem = 1;
+  });
   G.olay.on('devBit', () => { devAcik = false; });
   G.olay.on('yumruk', v => {
     if (!v || !v.konum || !v.yon) return;
     const yon = TMP2.copy(v.yon).normalize().clone();
-    const menz = devAcik ? 6 : 3, bit = !!v.bitirici, kombo = Math.max(1, v.komboNo | 0 || 1);
+    const menz = devAcik ? 6 : 3, bit = !!v.bitirici || v.komboNo === 3, kombo = Math.max(1, v.komboNo | 0 || 1);
     const dmg = (devAcik ? 50 : 25) * (bit ? 1.5 : 1), itK = 5 + kombo * 1.5 + (bit ? 4 : 0);
     for (const e of liste) {
       if (!e.canli) continue;
@@ -591,8 +598,9 @@ export function kur(G) {
         TMP2.copy(v.konum).sub(e.konum).setY(0).normalize();
         if (ileri.dot(TMP2) < -0.2) { vur(e, (devAcik ? 40 : 20) * (bit ? 1.5 : 1), TMP); e.sersem = 1.0; }
         else if (G.t - sonUyari > 4) { sonUyari = G.t; msj('Sırtındaki parlayan pili vur! Arkasına geç!', 3); }
-      } else vur(e, dmg, TMP, itK, bit);
+      } else vur(e, dmg, TMP, itK, bit || devAcik);
     }
+    if (devAcik && bit) devSok(v.konum);
   });
   G.olay.on('kamci', v => {
     if (!v || !v.konum || !v.yon) return;
@@ -614,9 +622,24 @@ export function kur(G) {
     const m = new THREE.Mesh(sokGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff9a3c).multiplyScalar(1.4), transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
     m.visible = false; sahne.add(m); sokHalka.push({ m, aktif: false, r: 0, x: 0, y: 0, z: 0, vurdu: false });
   }
+  // Dev Zifir bitirici: 10 m şok halkası, patron hariç herkes savrulur.
+  function devSok(k) {
+    const h = sokHalka.find(x => !x.aktif) || sokHalka[0];
+    h.aktif = true; h.r = 1; h.vurdu = true; h.maks = 10; h.hiz = 24; h.x = k.x; h.z = k.z; h.y = k.y;
+    h.m.material.color.set(0xb070ff).multiplyScalar(1.6); h.m.visible = true;
+    for (const e of liste) {
+      if (!e.canli || e.dev || e.tur === 'kamyonet') continue;
+      const dx = e.konum.x - k.x, dz = e.konum.z - k.z, d = Math.hypot(dx, dz);
+      if (d > 10 || Math.abs(e.konum.y - k.y) > 8) continue;
+      TMP2.set(dx || 0.01, 0.3, dz).normalize();
+      vur(e, 40, TMP2, 16, true);
+      if (e.canli && e.tur === 'dron') { e.sersem = 1.2; e.itme.addScaledVector(TMP2, 8); }
+    }
+    G.efekt?.sars?.(0.6, 0.4);
+  }
   function sokDalgasi(e) {
     const h = sokHalka.find(x => !x.aktif) || sokHalka[0];
-    h.aktif = true; h.r = 1; h.vurdu = false; h.x = e.konum.x + Math.sin(e.yaw) * 4; h.z = e.konum.z + Math.cos(e.yaw) * 4; h.y = e.konum.y;
+    h.aktif = true; h.r = 1; h.vurdu = false; h.maks = 18; h.hiz = 15; h.m.material.color.set(0xff9a3c).multiplyScalar(1.4); h.x = e.konum.x + Math.sin(e.yaw) * 4; h.z = e.konum.z + Math.cos(e.yaw) * 4; h.y = e.konum.y;
     h.m.visible = true;
     TMP.set(h.x, h.y + 0.3, h.z); kivilcim(TMP, 0xffc070, 14, 7);
   }
@@ -624,11 +647,11 @@ export function kur(G) {
     const p = oyuncuKonum();
     for (const h of sokHalka) {
       if (!h.aktif) continue;
-      const eski = h.r; h.r += 15 * dt;
-      h.m.position.set(h.x, h.y + 0.15, h.z); h.m.scale.setScalar(h.r); h.m.material.opacity = Math.max(0, 0.85 * (1 - h.r / 18));
+      const eski = h.r; h.r += (h.hiz || 15) * dt;
+      h.m.position.set(h.x, h.y + 0.15, h.z); h.m.scale.setScalar(h.r); h.m.material.opacity = Math.max(0, 0.85 * (1 - h.r / (h.maks || 18)));
       const dd = Math.hypot(p.x - h.x, p.z - h.z);
       if (!h.vurdu && dd >= eski - 0.7 && dd <= h.r + 0.7 && p.y - h.y < 1.2) { h.vurdu = true; TMP.set(h.x, h.y, h.z); G.oyuncu?.hasarAl?.(8, TMP); }
-      if (h.r > 18) { h.aktif = false; h.m.visible = false; }
+      if (h.r > (h.maks || 18)) { h.aktif = false; h.m.visible = false; }
     }
   }
   function robotGuncelle(e, dt, p, dx, dz, d) {
@@ -839,6 +862,7 @@ export function kur(G) {
     }
     kare++;
     for (const e of liste) if (e.canli) varlikGuncelle(e, dt);
+    { const nb = 0.5 + 0.5 * Math.sin(G2.t * 6); mPil.color.setRGB(0.4, 1, 0.8).multiplyScalar(1.0 + 1.4 * nb); mPilHale.opacity = 0.18 + 0.3 * nb; }
     sokGuncelle(dt);
     toplariGuncelle(dt, oyuncuKonum());
     havuzGuncelle(hCivata, dt); havuzGuncelle(hYay, dt); havuzGuncelle(hKivilcim, dt); havuzGuncelle(hJole, dt);
@@ -851,7 +875,7 @@ export function kur(G) {
       if (G.kahraman?.grup) G.kahraman.grup.visible = false;
       if (!F.isik) { F.isik = new THREE.PointLight(0xfff0e0, 14, 40, 1.5); sahne.add(F.isik); }
       F.isik.position.set(p0.x + TMP2.x * 1.5 + yan.x * 2, p0.y + 2, p0.z + TMP2.z * 1.5 + yan.z * 2);
-      if (q === 'p' || q === 'pa') { F.isik.intensity = 60; F.isik.distance = 120; F.isik.position.set(p0.x + TMP2.x * 12, p0.y + 8, p0.z + TMP2.z * 12); }
+      if (q === 'p' || q === 'pa') { F.isik.intensity = 12; F.isik.distance = 120; F.isik.position.set(p0.x + TMP2.x * 12, p0.y + 8, p0.z + TMP2.z * 12); }
       if (q === '1' || q === 'r') { yerle(F.r, 4.5, 0, 0, p0.y - 2.2); F.d.canli = false; F.d.grup.visible = false; F.dv.canli = false; F.dv.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
       else if (q === 'd') { yerle(F.d, 4, 0, 0, p0.y - 0.3); F.r.canli = false; F.r.grup.visible = false; F.dv.canli = false; F.dv.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
       else if (q === 'p') { yerle(F.dv, 18, 0, 0, p0.y - 2.3); F.r.canli = false; F.r.grup.visible = false; F.d.canli = false; F.d.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
