@@ -71,10 +71,12 @@ G.girdi = {
   kilitle()           // pointer lock iste (canvas tıklamasında otomatik)
 }
 ```
-Tuşlar: WASD yürü · Fare bak · Space zıpla (havada 2. zıplama) · **Sol tık BASILI = dokunaçla
-sallan, bırak = fırla** · **Sağ tık = çekil (zip: hedef noktaya hızla uç)** · Shift = koş/duvara
-tırman · F = jöle yumruğu · E = dokunaç kamçısı (yakındaki robotu çek) · Q = **DEV ZİFİR**
-(güç barı dolunca 12 sn büyür, güçlenir) · Esc = duraklat · M = ses aç/kapa.
+Tuşlar (GÜNCEL, 05.11 kullanıcı isteği): WASD yürü · Fare bak · Space zıpla (havada 2. zıplama) ·
+**Sol tık = SALDIRI**: nişana jöle mermisi at (yakında robot varsa yumruk) · **Sağ tık BASILI = dokunaçla
+sallan, bırak = fırla** · **E = çekil (zip)** · F = kamçı (yakındaki robotu çek) · Shift = koş/duvara
+tırman · Q = DEV ZİFİR · Esc = duraklat · M = ses.
+Olay: oyuncu `emit('atis', {baslangic: Vector3, yon: Vector3 (birim), guc, hedef: düşman|null})`;
+mermi uçuşu, görüntüsü ve isabet dusman.js'te. İsabette dusman `emit('isabet', {konum, tur})`.
 
 ### sehir.js  (sahip: ŞEHİR ajanı)
 ```js
