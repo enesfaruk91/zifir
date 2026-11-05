@@ -1,0 +1,407 @@
+diff --git a/RAPOR/test_bot.md b/RAPOR/test_bot.md
+index 79b033c..eeed570 100644
+--- a/RAPOR/test_bot.md
++++ b/RAPOR/test_bot.md
+@@ -1,10 +1,11 @@
+ # ZİFİR Otomatik Test Raporu
+ 
+-- Tarih: 2026-11-05 14:28:29
+-- URL: `http://127.0.0.1:8765/?test=1`
+-- Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`)
++- Tarih: 2026-11-05 16:56:10
++- URL: `http://127.0.0.1:8765/?test=1` (ana) ve `http://127.0.0.1:8765/?test=1&egitim=1` (eğitim)
++- Chrome DevTools portu: `40277` (socket bind 0 ile otomatik seçildi)
++- Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`), her koşuda ayrı geçici `--user-data-dir`
+ - Chrome: `/usr/bin/google-chrome`
+-- Süre: 73.2 sn
++- Süre: 183.7 sn
+ - Çalıştırma: otomatik yeniden deneme sarmalayıcısı içinde (yalnız altyapı hatasında tekrar)
+ - Betik: `test/test_oyun.py` (oyun kodu değiştirilmedi)
+ 
+@@ -14,50 +15,84 @@
+    - Ayrıntı: 8/8 modül yüklü
+    - İlgili modül: oyun.js + tüm modüller
+ 2. **GEÇTİ** — 10 sn boyunca konum NaN değil ve y > -5
+-   - Ayrıntı: 883 örnek / 10.0 sn; NaN=0; y min=0, max=31.30842022675739; y<=-5 örnek=0
++   - Ayrıntı: 1291 örnek / 10.0 oyun-sn (oyun-suresi); NaN=0; y min=2.1519018585686567, max=24.9535800889994; y<=-5 örnek=0
+    - İlgili modül: oyuncu.js
+ 3. **GEÇTİ** — Test demosunda sallanma en az bir kez gerçekleşti
+-   - Ayrıntı: 'sallan'/'cek' durumu 285/883 örnekte görüldü (G.t'ye göre 10.0 oyun-sn); oyuncu toplam sallanma sayacı=3
++   - Ayrıntı: 'sallan'/'cek' durumu 733/1291 örnekte görüldü (G.t'ye göre 10.0 oyun-sn); oyuncu toplam sallanma sayacı=3
+    - İlgili modül: girdi.js (test demosu) + oyuncu.js (sallanma)
+-4. **GEÇTİ** — ankrajBul yukarı-ileri ışında nokta buluyor; carpis iç noktayı dışarı itiyor
++4. **GEÇTİ** — G.kahraman.grup içinde GLB SkinnedMesh yüklendi (≤15 oyun-sn)
++   - Ayrıntı: SkinnedMesh=2 (['Mannequin_1', 'Mannequin_2']), grup çocuk=2; bekleme 0.0 oyun-sn (kosul), duvar 0.0 sn
++   - İlgili modül: kahraman.js
++5. **GEÇTİ** — G.dusman.liste içinde en az 1 dron ve 1 robot var; mermiler dizi
++   - Ayrıntı: robot=4, dron=3, liste dizi=True; G.dusman.mermiler var=True dizi=True, oyuncuMermileri dizi=True; bekleme 0.0 oyun-sn (kosul)
++   - İlgili modül: dusman.js
++6. **GEÇTİ** — Ses: G.ses.yuklendi / G.ses tanımlı ve 'arayuz_sec' hatasız çalıyor
++   - Ayrıntı: G.ses=var, yuklendi=False, 'arayuz_sec' çağrısı=hata yok
++   - İlgili modül: ses.js
++7. **GEÇTİ** — Arayüz: G.ayar (hassasiyet/yTers/fov) ve kalite 'dusuk'→'orta' hatasız
++   - Ayrıntı: G.ayar=var, alanlar={'hassasiyet': True, 'yTers': True, 'fov': True}; kalite orta→dusuk→orta (ara=dusuk, son=orta); hata=None
++   - İlgili modül: arayuz.js + oyun.js
++8. **GEÇTİ** — Performans bilgisi: 5 oyun-sn ortalama renderer.info çizim çağrısı/üçgen
++   - Ayrıntı: ortalama 116.6078431372549 çizim çağrısı/kare, 337248.5882352941 üçgen/kare; 102 kare, 5.0 oyun-sn (oyun-suresi), duvar 40.7 sn; render kapalı=False (bilgi)
++   - İlgili modül: oyun.js render döngüsü
++9. **GEÇTİ** — Ortalama kare süresi ölçüldü (yalnız bilgi)
++   - Ayrıntı: ortalama 326.65 ms/kare (~3.1 fps), 10 kare / 3266 ms; composer 160x90, çizim tamponu 80x45, yalnız RenderPass (bloom/gölge kapalı) — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 9.0 fps (render kapalı).
++   - İlgili modül: oyun.js render döngüsü
++10. **GEÇTİ** — ankrajBul yukarı-ileri ışında nokta buluyor; carpis iç noktayı dışarı itiyor
+    - Ayrıntı: ankraj=bulundu (1 bina denemesi); carpis itme=9.050 m, dışarı=True, normal={'x': -1, 'y': 0, 'z': 0}, duvar=True
+    - İlgili modül: sehir.js
+-5. **GEÇTİ** — yumruk olayı robot canını düşürüyor / robot sayısını azaltıyor
+-   - Ayrıntı: dron can 40→15, canlı True→True, aktif 3→3
++11. **GEÇTİ** — yumruk olayı robot canını düşürüyor / robot sayısını azaltıyor
++   - Ayrıntı: dron can 40→15, canlı True→True, aktif 2→2
+    - İlgili modül: dusman.js
+-6. **GEÇTİ** — isinla(küre konumu) görev/küre sayısını artırıyor
+-   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); konum={'x': -197.44264221191406, 'y': 21.78092432978166, 'z': -362.8052062988281}
++12. **GEÇTİ** — isinla(küre konumu) görev/küre sayısını artırıyor
++   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); 1/60 görünür küre denendi, bekleme 0.1 oyun-sn (toplandi); durum=dus, konum={'x': 142.8400421142578, 'y': 47.11841074625651, 'z': 18.399045944213867}
+    - İlgili modül: gorev.js + oyuncu.js.isinla
+-7. **GEÇTİ** — hasarAl(1000) sonrası 4 sn içinde can dolu ve konum geçerli
+-   - Ayrıntı: 'yenildi' alındı (1 çağrı); 2.2 sn sonra can=100/100, konum={'x': -83.38129824939112, 'y': 31.671116473725252, 'z': -298.6212861392149}, geçerli=True
++13. **GEÇTİ** — hasarAl(1000) sonrası 4 oyun-sn içinde can dolu ve konum geçerli
++   - Ayrıntı: 'yenildi'=alındı (1 hasarAl(1000) çağrısı); bekleme 2.0 oyun-sn (kosul), duvar 2.6 sn; can=100/100, durum=dogus, konum={'x': -76.55488834702521, 'y': 23.388920460947674, 'z': 263.16731662699}, geçerli=True
+    - İlgili modül: oyuncu.js
+-8. **GEÇTİ** — Ortalama kare süresi ölçüldü (yalnız bilgi)
+-   - Ayrıntı: ortalama 213.33 ms/kare (~4.7 fps), 15 kare / 3200 ms; composer 480x270, çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 21.4 fps (render kapalı).
+-   - İlgili modül: oyun.js render döngüsü
+-10. **GEÇTİ** — 30 binaya yerden 15 m/s koşuda oyuncu hiçbir bina kutusunun içine girmiyor
++14. **GEÇTİ** — 30 binaya yerden 15 m/s koşuda oyuncu hiçbir bina kutusunun içine girmiyor
+    - Ayrıntı: 30 bina × 2 sn yerden 15 m/s koşu = 3600 örnek; bina içinde ayak/bel/baş noktası=0
+    - İlgili modül: oyuncu.js + sehir.js
+-11. **GEÇTİ** — Sallanma demosunda 10 sn boyunca bina içinde değil (simülasyon + canlı demo)
+-   - Ayrıntı: 6 çatı denemesi × 10 sn (sallan+zıpla+E) = 3600 örnek; bina içi=0, sallan/cek örneği=709, max hız=472; canlı demo 10 oyun-sn bina içi örnek=0
++15. **GEÇTİ** — Sallanma demosunda 10 sn boyunca bina içinde değil (simülasyon + canlı demo)
++   - Ayrıntı: 6 çatı denemesi × 10 sn (sallan+zıpla+E) = 3600 örnek; bina içi=0, sallan/cek örneği=1971, max hız=104; canlı demo 10 oyun-sn bina içi örnek=0
+    - İlgili modül: oyuncu.js + sehir.js
+-12. **GEÇTİ** — Görsel bina instance matrisleri fizik kutularıyla uyuşuyor
++16. **GEÇTİ** — Görsel bina instance matrisleri fizik kutularıyla uyuşuyor
+    - Ayrıntı: görsel instance=657, binalar[].kutu=311; kutusu eşleşmeyen=0, fizik katı olmayan görsel nokta=0
+    - İlgili modül: sehir.js
+-13. **GEÇTİ** — Sağ tık basılı yerden yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor
+-   - Ayrıntı: 6 yerden denemede çatıya inen=6, 'cek' durumu görülen=6, nişan yüksek hedefte=6, en geç iniş=4.0 sn; [bina_h, iniş_kare]=[[66, 218], [62, 218], [78, 243], [45, 174], [45, 178], [51, 190]]
++17. **GEÇTİ** — Yerden sağ tık yüksek ankrajla sallanma başlatıyor; E yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor
++   - Ayrıntı: 6 yerden denemede sallanma=6, yüksek ankraj=6, zip=6, çatıya inen=6, nişan yüksek hedefte=6, en geç iniş=0.9 sn; durumlar={'sallan': 540}, ankrajlı kare=540, çatı hedefi olmadığı için atlanan bina=2; [bina_h, sallan, yüksekAnkraj, zip, iniş_kare, maxY, sonY, sonDurum, zipKare]=[[66, True, True, True, 54, 66.8, 66.5, 'yuru', 32], [78, True, True, True, 54, 78.2, 77.9, 'yuru', 32], [45, True, True, True, 54, 45, 44.7, 'yuru', 32], [45, True, True, True, 54, 45.2, 44.9, 'yuru', 32], [51, True, True, True, 54, 51.6, 51.2, 'yuru', 32], [66, True, True, True, 54, 66.4, 66, 'yuru', 32]]
++   - İlgili modül: oyuncu.js + sehir.js
++18. **GEÇTİ** — Sol tık yakında 4 vuruşluk kombo: yumruk komboNo 0-3 ve 'bitirici' olayı
++   - Ayrıntı: komboNo=[0, 1, 2, 3], kombo sayacı=[1, 2, 3, 4], bitirici=1; kaçış tehlike bayrağı=True, 'kacis' olayı=1
++   - İlgili modül: oyuncu.js
++19. **GEÇTİ** — Shift ile duvara koşunca duvarda koşu ve çatıya çıkış ('konus')
++   - Ayrıntı: 5 denemede duvar durumu=5, çatıya çıkan=5, 'konus' olayı=5; [bina_h, duvar, çatı, max dikey hız]=[[41, True, True, 14], [39, True, True, 14], [56, True, True, 14], [52, True, True, 14], [45, True, True, 14]]
++   - İlgili modül: oyuncu.js
++20. **GEÇTİ** — Havada sağ tık ileri-yukarı ankrajla klasik salınım başlatıyor (mükemmel bırakış sayısı bilgi)
++   - Ayrıntı: 8 denemede mükemmel bırakış=2, salınım kare sayısı=2878, salınım max hız=40.520564358207714 (zamanlamaya duyarlı)
+    - İlgili modül: oyuncu.js
+-9. **GEÇTİ** — Konsolda Uncaught / THREE.WebGLProgram / shader hatası yok
+-   - Ayrıntı: konsolda 'Uncaught' / 'THREE.WebGLProgram' / 'shader' satırı yok
+-   - İlgili modül: shader ise sehir/kahraman/arayuz; Uncaught ise ilgili modül
++21. **GEÇTİ** — Efekt: G.efekt.sars/yavasCekim/vurusDuraklat/hizBulanikligi/flas hatasız; yavasCekim'de G.zamanOlcek<1
++   - Ayrıntı: fonksiyonlar={'sars': True, 'yavasCekim': True, 'vurusDuraklat': True, 'hizBulanikligi': True, 'flas': True}; çağrı hataları=yok; yavasCekim sırasında en düşük G.zamanOlcek=0.02 (29 örnek, 0.8 oyun-sn, oyun-suresi)
++   - İlgili modül: oyun.js (G.efekt)
++22. **GEÇTİ** — Eğitim: ?test=1&egitim=1 ile G.gorev.aktif.ad eğitim adımı oluyor
++   - Ayrıntı: G.gorev.egitimde=True, aktif.ad='EĞİTİM 1/5 · Çatıya Çık', ipucu='Çatıya Çık'; bekleme 0.0 oyun-sn (kosul)
++   - İlgili modül: gorev.js
++23. **GEÇTİ** — Konsolda Uncaught / SHADER / is not defined hatası yok (tüm koşu)
++   - Ayrıntı: tüm koşuda 'Uncaught' / 'SHADER' / 'is not defined' satırı yok (ana sayfa + eğitim sayfası + CDP + Chrome stderr)
++   - İlgili modül: shader ise sehir/kahraman/arayuz/oyun; 'is not defined' ise satırdaki modül
+ 
+ ## Özet
+ 
+-**TOPLAM 13/13**
++**TOPLAM 23/23**
+ 
+ ## Notlar
+ 
+-- Test 8 (kare süresi) 240x135 çizim tamponunda (composer 480x270), bloom ve gölge kapalı olarak ölçülür; swiftshader yazılım render'ı gerçek GPU performansını yansıtmaz.
+-- swiftshader 1280x720'de çok yavaş kaldığından (geliştirme sırasında 0.2-0.8 fps ölçüldü; oyun saati dt=0.05 sınırıyla ilerler) yalnız çizim yükü azaltıldı: composer 480x270 / 240x135 tampon, bloom ve gölge kapalı; gerekirse render çağrısı durduruldu. Oyun kodu/dosyaları değiştirilmedi, fizik ve görev mantığı aynı `guncelle` döngüsüyle çalıştı.
++- 23 kontrolün tamamı GEÇTİ/KALDI + ayrıntı olarak raporlanır; oyun kodu değiştirilmedi.
++- Chrome DevTools portu her koşuda `socket.bind(('127.0.0.1', 0))` ile boş porttan seçilir; `--user-data-dir` her koşuda `tempfile.mkdtemp` ile oluşturulur ve `try/finally` içinde Chrome ile birlikte kapatılıp silinir. Böylece eşzamanlı ajanlar 9333 portunda çakışmaz.
++- Zamanlamaya duyarlı beklemeler oyun saati `G.t` üzerinden yapılır (kahraman GLB ≤15, düşman ≤30, küre ≤3, yeniden doğuş ≤4, efekt ≤1, eğitim ≤10 oyun-sn). Oyun saati üst sınırı aşarsa ilgili kontrol KALDI olur; duvar saati yalnız güvenlik sınırıdır.
++- Kare süresi kontrolü 80x45 çizim tamponunda (composer 160x90), yalnız temel RenderPass ve gölge kapalı ölçülür; swiftshader yazılım render'ı gerçek GPU performansını yansıtmaz. 5 oyun-sn performans bilgisi `renderer.info.render.calls/triangles` kare ortalamasıdır.
++- swiftshader + eşzamanlı ajan yükü altında (geliştirme sırasında 0.2-0.8 fps ölçüldü; oyun saati dt=0.05 sınırıyla ilerler) yalnız çizim yükü azaltıldı: 640x360 pencere, composer 160x90 / 80x45 tampon, yalnız RenderPass, bloom ve gölge kapalı; gerekirse render çağrısı durduruldu. Fizik ve görev mantığı aynı `guncelle` döngüsüyle çalıştı.
+ - Test demosu `girdi.js` içinde `?test=1` sırasında ilk 6 saniye çalışır.
+-- Konsol taraması sayfa `console.error/warn`, `window.__ZIFIR_HATALAR`, CDP istisnaları ve Chrome stderr üzerinden yapıldı.
+-- Oyun kodu düzeltilmedi; raporlama yapıldı.
++- Eğitim kontrolü ana sayfa kontrollerinden sonra `?test=1&egitim=1` adresine gezinir; ana sayfanın konsol kayıtları gezinmeden önce saklanır ve eğitim sayfasınınkilerle birleştirilir.
++- Konsol taraması tüm koşu boyunca sayfa `console.error/warn`, `window.__ZIFIR_HATALAR`, CDP istisnaları ve Chrome stderr üzerinden 'Uncaught' / 'SHADER' / 'is not defined' için yapıldı.
++- Oyun kodu düzeltilmedi; yalnız sorunlu modül ve ayrıntı raporlandı.
+diff --git a/assets/LISTE.md b/assets/LISTE.md
+index e0d2678..1b55436 100644
+--- a/assets/LISTE.md
++++ b/assets/LISTE.md
+@@ -38,3 +38,39 @@ Cephelerin her biri 8 sütun × 8 satır içerir. İlgili renk ve `_isik` harita
+ Roughness haritası renk dokusu değildir: koyu değerler düşük pürüzlülük/yüksek parlaklık, açık değerler daha pürüzlü yüzeydir. Gökyüzü yalnız yatayda sarılır. PNG dosyalarında gerçek alfa kanalı vardır.
+ 
+ Üretim yöntemi, kontroller, sınırlar ve tam prompt seti: [görsel raporu](../RAPOR/gorsel.md).
++
++
++## Görsel paketi 2 — 2026-11-05
++
++24 yeni görsel: 8 ara sahne, 6 görev ikonu, 8 metinsiz başarım rozeti, 2 portre. **4,119,128 bayt (4.12 MB; 3.93 MiB)**; 15 MB sınırının altında. İlk paketle birlikte 50 görsel, 11,239,044 bayt (11.24 MB).
++
++Ara sahneler 1280×720 RGB JPEG, kalite 88. İkonlar ve rozetler 256×256, portreler 512×512 RGBA PNG; arka planlar gerçek saydam. Hiçbiri tileable değildir.
++
++| Dosya | Piksel boyutu | Dosya boyutu | İçerik |
++|---|---:|---:|---|
++| [prof_pas.jpg](hikaye/prof_pas.jpg) | 1280×720 | 339,630 bayt | Profesör Pas; paslı turuncu önlük, dev pirinç gözlük, mekanik kol ve arkasında Pas Robotları. |
++| [gorev_kure.jpg](hikaye/gorev_kure.jpg) | 1280×720 | 295,335 bayt | Şehirden dronlarla kaçırılan parlak ışık küreleri; çatıda Zifir. |
++| [gorev_kedi.jpg](hikaye/gorev_kedi.jpg) | 1280×720 | 252,346 bayt | Çatı kenarındaki sevimli kediye elini uzatan Zifir; kedinin ağzı kapalı. |
++| [gorev_halka.jpg](hikaye/gorev_halka.jpg) | 1280×720 | 271,658 bayt | Gökdelenler arasındaki neon yarış halkalarından dokunaçla sallanarak geçen Zifir. |
++| [gorev_kamyonet.jpg](hikaye/gorev_kamyonet.jpg) | 1280×720 | 285,143 bayt | Işık kürelerini kaçıran paslı kamyonetin dokunaçla peşinden giden Zifir. |
++| [gorev_patron.jpg](hikaye/gorev_patron.jpg) | 1280×720 | 313,542 bayt | Çatıda dev Pas Robotu; sırtındaki parlak turkuaz pil açıkça görünür. |
++| [kara_canavar.jpg](hikaye/kara_canavar.jpg) | 1280×720 | 298,591 bayt | İri Kara Canavar; öne eğik, organik omuz dikenleri, dört uzun dokunaç, ayrık damla gözler, mor-turkuaz damarlar, yağmurlu çatı. |
++| [bitis.jpg](hikaye/bitis.jpg) | 1280×720 | 230,784 bayt | Şafakta çatıda oturan Zifir ve kurtarılan kedi; solan şehir ışıkları. |
++| [ikon_kure.png](ui/ikon_kure.png) | 256×256 | 51,423 bayt | Işık küresi görev ikonu. |
++| [ikon_kedi.png](ui/ikon_kedi.png) | 256×256 | 80,298 bayt | Kedi kurtarma görev ikonu. |
++| [ikon_halka.png](ui/ikon_halka.png) | 256×256 | 46,282 bayt | Neon halka yarışı görev ikonu. |
++| [ikon_kamyonet.png](ui/ikon_kamyonet.png) | 256×256 | 72,860 bayt | Paslı hırsız kamyonet görev ikonu. |
++| [ikon_patron.png](ui/ikon_patron.png) | 256×256 | 91,222 bayt | Tek gözlü Pas Robotu patron görev ikonu. |
++| [ikon_egitim.png](ui/ikon_egitim.png) | 256×256 | 61,192 bayt | Açık kitap ve hareket oku; eğitim ikonu. |
++| [rozet_1.png](ui/rozet_1.png) | 256×256 | 82,473 bayt | İlk Sallanma — sallanan jöle kahraman ve hareket yayı; metinsiz madalya. |
++| [rozet_2.png](ui/rozet_2.png) | 256×256 | 83,036 bayt | Çatı Kralı — çatılar ve altın taç; metinsiz madalya. |
++| [rozet_3.png](ui/rozet_3.png) | 256×256 | 97,701 bayt | Kombo Ustası — jöle yumruk ve üç yıldız; metinsiz madalya. |
++| [rozet_4.png](ui/rozet_4.png) | 256×256 | 85,195 bayt | Dron Avcısı — tek gözlü pervaneli dron; metinsiz madalya. |
++| [rozet_5.png](ui/rozet_5.png) | 256×256 | 88,023 bayt | Kedi Dostu — kedi ve turkuaz kalp; metinsiz madalya. |
++| [rozet_6.png](ui/rozet_6.png) | 256×256 | 106,149 bayt | Kara Canavar — güçlü jöle kahraman ve dört dokunaç; metinsiz madalya. |
++| [rozet_7.png](ui/rozet_7.png) | 256×256 | 88,708 bayt | Mükemmel Bırakış — açık jöle el, hareket yayı ve altın yıldız; metinsiz madalya. |
++| [rozet_8.png](ui/rozet_8.png) | 256×256 | 102,301 bayt | Şehrin Kahramanı — şehir üzerinde mor-turkuaz Yürek Taşı; metinsiz madalya. |
++| [zifir_portre.png](ui/zifir_portre.png) | 512×512 | 250,377 bayt | Zifir HUD/diyalog portresi; parlak kara jöle, ayrık damla gözler ve Yürek Taşı. |
++| [prof_pas_portre.png](ui/prof_pas_portre.png) | 512×512 | 444,859 bayt | Profesör Pas HUD/diyalog portresi; sahnedeki karakterle aynı yüz ve kostüm. |
++
++Her son dosya açılarak görsel denetimden geçirildi; boyutlar, biçimler, JPEG kalite tabloları ve PNG alfa kanalları doğrulandı. Üretim yöntemi, kontroller ve tam istem seti: [görsel paketi 2 raporu](../RAPOR/gorsel2.md).
+diff --git a/js/kahraman.js b/js/kahraman.js
+index 8db7be9..3157cf5 100644
+--- a/js/kahraman.js
++++ b/js/kahraman.js
+@@ -743,7 +743,7 @@ export function kur(G) {
+     }
+ 
+     const ex0 = bw(kb('handL')).x > bw(kb('handR')).x;
+-    const mk = (a, b) => ({ ust: kb('upper_arm' + a), on: kb('forearm' + a), el: kb('hand' + a), uyluk: kb('thigh' + a), baldir: kb('shin' + a) });
++    const mk = (a, b) => ({ ust: kb('upper_arm' + a), on: kb('forearm' + a), el: kb('hand' + a), uyluk: kb('thigh' + a), baldir: kb('shin' + a), ayak: kb('foot' + a) });
+     const K = { sol: mk(ex0 ? 'L' : 'R'), sag: mk(ex0 ? 'R' : 'L') };
+     const elK = { sol: new V3(), sag: new V3() };
+ 
+@@ -802,7 +802,7 @@ export function kur(G) {
+     on('mukemmelBirakis', () => { g.flip = 0.0001; g.flipT = 0.75; });
+     on('konus', () => { if (!g.tek) tekBaslat('Jump_Land', 1.1, 0.5, 'tam'); });
+ 
+-    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvarKos', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur' };
++    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvarKos', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur', suzul: 'suzul', dalis: 'dalis' };
+     const esle = (ad) => {
+       if (ESLE[ad]) return ESLE[ad];
+       const l = String(ad).toLowerCase();
+@@ -826,7 +826,7 @@ export function kur(G) {
+ 
+     const ABD = +(QS.get('abd') ?? 0.3), PUN = +(QS.get('pun') ?? 0.5);
+     const qk = new THREE.Quaternion(), vv = new V3(), omuzP = new V3(), invK = new THREE.Matrix4(), mm = new THREE.Matrix4();
+-    const fwd = new V3(), upV = new V3(), yanSol = new V3(), dirV = new V3(), tmpH = new V3();
++    const kalP = new V3(), kalP2 = new V3(), fwd = new V3(), upV = new V3(), yanSol = new V3(), dirV = new V3(), tmpH = new V3();
+ 
+     let izAcc = 0;
+     function guncelle(dt, t) {
+@@ -841,7 +841,7 @@ export function kur(G) {
+       const girdi = d !== g.d; if (girdi) { g.d = d; g.dt = 0; }
+       g.dt += dt;
+       const havada = !son.yerde;
+-      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9 && d !== 'duvar' && d !== 'duvarKos'; // duvarda grup yönü oyuncu.js'in (duvara dik): ezme, yuvarlanma yok
++      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9 && d !== 'duvar' && d !== 'duvarKos' && d !== 'suzul' && d !== 'dalis'; // duvarda grup yönü oyuncu.js'in (duvara dik): ezme, yuvarlanma yok
+       if (egik) g.yuvarlan = -1;
+       if (g.yuvarlan > 0) { g.yuvarlan -= 1; if (g.yuvarlan <= 0) { g.yuvarlan = -2; tekBaslat('Roll', 1.5, 0.55, 'tam'); } }
+       if (g.inis > 0) g.inis -= dt;
+@@ -861,7 +861,7 @@ export function kur(G) {
+         case 'yuru': lo = hs < 3.4 ? 'Walk_Loop' : 'Jog_Fwd_Loop'; loTs = hs < 3.4 ? kisitla(hs / 1.5, 0.7, 1.9) : kisitla(hs / 4.4, 0.85, 1.5); break;
+         case 'kos': lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = hs < 7.5 ? kisitla(hs / 4.4, 0.85, 1.7) : kisitla(hs / 8, 0.85, 1.6); break;
+         case 'zipla': if (g.dt < sure('Jump_Start') * 0.85 && havada) { lo = 'Jump_Start'; tekr = true; } else lo = 'Jump_Loop'; break;
+-        case 'dus': case 'sallan': case 'zip': case 'sapan': lo = 'Jump_Loop'; break;
++        case 'dus': case 'sallan': case 'zip': case 'sapan': case 'suzul': case 'dalis': lo = 'Jump_Loop'; break;
+         case 'duvar': if (sp > 0.3) { lo = 'Crouch_Fwd_Loop'; loTs = kisitla(sp / 1.6, 0.6, 1.8); } else lo = 'Crouch_Idle_Loop'; break;
+         case 'duvarKos': lo = 'Sprint_Loop'; loTs = kisitla(sp / 8, 0.8, 1.6); break;
+         case 'yumruk': case 'kamci': case 'hasar': if (hs > 0.8) { lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = kisitla(hs / 5, 0.8, 1.5); } break;
+@@ -898,6 +898,23 @@ export function kur(G) {
+       if (devK > 0.01) { ek(solT.ust, 0, 0, ABD * devK); ek(sagT.ust, 0, 0, -ABD * devK); }
+       if (egik) {
+         for (const T of [solT, sagT]) { ek(T.uyluk, -1.35, 0, 0); ek(T.baldir, 1.8, 0, 0); }
++      } else if (d === 'suzul' || d === 'dalis') {
++        // süzül: yüzüstü yatay, kollar T-poz (hafif aşağı), bacaklar açık; dalış: kollar gövdede, bacaklar düz, baş aşağı ok
++        const dal = d === 'dalis', w = 0.35 + 0.65 * yumus(0, 0.18, g.dt);
++        pivH = dal ? kisitla(Math.PI / 2 - e, 0.9, 3.0) : kisitla(Math.PI / 2 - e * 0.7, 1.25, 1.95);
++        for (const T of [solT, sagT]) {
++          const sg = T === solT ? 1 : -1;
++          bw(T.ust, omuzP);
++          if (dal) hed.copy(omuzP).addScaledVector(upV, -1.2).addScaledVector(yanSol, sg * 0.14);
++          else hed.copy(omuzP).addScaledVector(yanSol, sg * 3).addScaledVector(fwd, 0.5);
++          kolUzat(T, hed, w);
++          bw(T.uyluk, kalP);
++          hed.copy(kalP).addScaledVector(upV, -1).addScaledVector(yanSol, sg * (dal ? 0.03 : 0.4));
++          yonelt(T.uyluk, T.baldir, hed, w);
++          bw(T.baldir, kalP2); hed.copy(kalP2).addScaledVector(upV, -1).addScaledVector(yanSol, sg * (dal ? 0.02 : 0.3));
++          yonelt(T.baldir, T.ayak, hed, w);
++        }
++        if (!dal) ek(kb('head'), -0.45, 0, 0);
+       } else if (d === 'sallan') {
+         pivH = kisitla(0.55 - 0.5 * e, 0.1, 1.0);
+         // el: 'sol' | 'sag' (oyuncu.js) -> pozlar aynalı; el değişiminde 0.15 sn yumuşak geçiş
+@@ -1003,6 +1020,129 @@ export function kur(G) {
+         mm.multiplyMatrices(invK, T.on.matrixWorld); wc.setFromMatrixPosition(mm);
+         elK[ad].copy(_p).addScaledVector(d2.subVectors(_p, wc).normalize(), 0.09);
+       }
++      zarGuncelle(dt, t, d);
++    }
++
++    // ---- JÖLE KANAT: Zifir'in kendi kara jölesinden gerilen zar (kemik noktalarından güncellenen tek mesh) ----
++    const ZN = 8, ZM = 4, ZT = (ZN + 1) * (ZM + 1);
++    const zarPos = new Float32Array(3 * ZT * 3), zarNor = new Float32Array(3 * ZT * 3);
++    const zarGeo = new THREE.BufferGeometry();
++    {
++      const uv = new Float32Array(3 * ZT * 2), fl = new Float32Array(3 * ZT), bl = new Float32Array(3 * ZT), idx = [];
++      for (let q = 0; q < 3; q++) for (let i = 0; i <= ZN; i++) for (let j = 0; j <= ZM; j++) {
++        const k = q * ZT + i * (ZM + 1) + j, u = i / ZN, v = j / ZM;
++        uv[k * 2] = u; uv[k * 2 + 1] = v;
++        if (q < 2) { fl[k] = v * (0.3 + 0.7 * u); bl[k] = Math.sin(Math.PI * v) * (0.35 + 0.65 * u); }
++        else { fl[k] = u * (0.25 + Math.abs(2 * v - 1) * 0.75); bl[k] = Math.sin(Math.PI * v) * 0.8 * u; }
++        if (i < ZN && j < ZM) { const a = k, b = k + 1, c = k + ZM + 1, dd = k + ZM + 2; idx.push(a, b, c, b, dd, c); }
++      }
++      zarGeo.setAttribute('position', new THREE.BufferAttribute(zarPos, 3).setUsage(THREE.DynamicDrawUsage));
++      zarGeo.setAttribute('normal', new THREE.BufferAttribute(zarNor, 3).setUsage(THREE.DynamicDrawUsage));
++      zarGeo.setAttribute('aUV', new THREE.BufferAttribute(uv, 2));
++      zarGeo.setAttribute('aFl', new THREE.BufferAttribute(fl, 1));
++      zarGeo.setAttribute('aBl', new THREE.BufferAttribute(bl, 1));
++      zarGeo.setIndex(idx);
++    }
++    const zarMat = new THREE.ShaderMaterial({
++      transparent: true, depthWrite: false, side: THREE.DoubleSide,
++      uniforms: { uT: { value: 0 }, uBill: { value: 0.08 }, uAmp: { value: 1 }, uDir: { value: new V3(0, 1, 0) }, uDev: { value: 0 }, uA: { value: 0 } },
++      vertexShader: `attribute vec2 aUV; attribute float aFl; attribute float aBl;
++uniform float uT; uniform float uBill; uniform float uAmp; uniform vec3 uDir;
++varying vec2 vUV; varying vec3 vN; varying vec3 vV;
++void main(){
++  vUV = aUV;
++  float w = sin(uT*11.0 + aUV.x*7.0 + aUV.y*3.0)*0.04 + sin(uT*19.0 - aUV.x*11.0 + aUV.y*5.0)*0.018;
++  vec3 p = position + uDir*(aBl*uBill + w*aFl*uAmp);
++  vec4 mv = viewMatrix*vec4(p,1.0);
++  vN = normalize(mat3(viewMatrix)*normal); vV = -mv.xyz;
++  gl_Position = projectionMatrix*mv;
++}`,
++      fragmentShader: `uniform float uT; uniform float uDev; uniform float uA;
++varying vec2 vUV; varying vec3 vN; varying vec3 vV;
++void main(){
++  vec3 N = normalize(vN); if(!gl_FrontFacing) N = -N;
++  float f = pow(1.0 - abs(dot(N, normalize(vV))), 2.0);
++  float edge = max(1.0 - smoothstep(0.0, 0.1, vUV.y), smoothstep(0.86, 1.0, vUV.y));
++  edge = max(edge, smoothstep(0.88, 1.0, vUV.x)*0.8);
++  float vein = pow(0.5 + 0.5*sin(vUV.x*26.0 - uT*3.0 + vUV.y*6.0), 6.0);
++  vec3 col = vec3(0.02, 0.01, 0.05) + vec3(0.32, 0.12, 0.85)*f*0.9 + vec3(0.6, 0.22, 1.25)*edge*1.5 + vec3(0.1, 0.65, 0.9)*vein*0.25;
++  float a = clamp(0.5 + 0.28*uDev + 0.3*f + 0.45*edge, 0.0, 0.96) * uA;
++  gl_FragColor = vec4(col, a);
++}`,
++    });
++    const zarMesh = new THREE.Mesh(zarGeo, QS.has('zbas') ? new THREE.MeshBasicMaterial({ color: 0xff2020, side: THREE.DoubleSide }) : zarMat); zarMesh.frustumCulled = false; zarMesh.visible = false; zarMesh.renderOrder = 6; G.sahne.add(zarMesh); sahneEk.push(zarMesh);
++    // dalış hız izi: arkada ince mor çizgiler
++    const izPos = new Float32Array(12 * 3), izRenk = new Float32Array(12 * 3);
++    for (let i = 0; i < 6; i++) { izRenk.set([0.7, 0.28, 1.2], i * 6); izRenk.set([0, 0, 0], i * 6 + 3); }
++    const izGeo2 = new THREE.BufferGeometry();
++    izGeo2.setAttribute('position', new THREE.BufferAttribute(izPos, 3).setUsage(THREE.DynamicDrawUsage));
++    izGeo2.setAttribute('color', new THREE.BufferAttribute(izRenk, 3));
++    const izMat2 = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
++    const izMesh = new THREE.LineSegments(izGeo2, izMat2); izMesh.frustumCulled = false; izMesh.visible = false; G.sahne.add(izMesh); sahneEk.push(izMesh);
++    // kapanışta düşen jöle damlaları
++    const zDam = Array.from({ length: 8 }, () => { const m = new THREE.Mesh(damlaGeo, mat); m.visible = false; m.userData.v = new V3(); m.userData.o = 0; dunya.add(m); return m; });
++    let zk = 0, zOnce = 'dur', izK = 0;
++    const zA = new V3(), zT = new V3(), zL = new V3(), zR = new V3(), zC = new V3(), shP = new V3(), elP = new V3(), hdP = new V3(), tipP = new V3(), hipP = new V3();
++    const yol = (a, b, c, s, out) => (s < 0.5 ? out.lerpVectors(a, b, s * 2) : out.lerpVectors(b, c, (s - 0.5) * 2));
++    const zarYaz = (k, v) => { zarPos[k * 3] = v.x; zarPos[k * 3 + 1] = v.y; zarPos[k * 3 + 2] = v.z; };
++    const legP = { sol: [new V3(), new V3(), new V3()], sag: [new V3(), new V3(), new V3()] };
++    function zarGuncelle(dt, t, d) {
++      const acik = d === 'suzul';
++      const hiz = acik ? 1 / 0.25 : 1 / 0.2;
++      zk += kisitla((acik ? 1 : 0) - zk, -dt * hiz, dt * hiz);
++      if (zOnce === 'suzul' && !acik && zk > 0.3) { // kapanış: kenardan damlalar
++        for (const m of zDam) {
++          const k = (Math.random() < 0.5 ? 0 : ZT) + (ZN - Math.floor(Math.random() * 4)) * (ZM + 1) + ZM;
++          m.position.set(zarPos[k * 3], zarPos[k * 3 + 1], zarPos[k * 3 + 2]);
++          m.userData.v.set((Math.random() - 0.5) * 1.2, -0.5 - Math.random(), (Math.random() - 0.5) * 1.2);
++          m.userData.o = 0; m.scale.setScalar(0.04 + Math.random() * 0.05); m.visible = true;
++        }
++      }
++      zOnce = d;
++      if (QS.has('zdbg') && !zarGuncelle.l) { zarGuncelle.l = 1; setTimeout(() => { zarGuncelle.l = 0; }, 1000); console.info('ZDBG', d, zk, zarMesh.visible, Array.from(zarPos.slice(0, 9)).map(x => x.toFixed(2)).join(','), Array.from(zarPos.slice(2*ZT*3, 2*ZT*3+9)).map(x => x.toFixed(2)).join(',')); }
++      for (const m of zDam) if (m.visible) { const v = m.userData.v; v.y -= 12 * dt; m.position.addScaledVector(v, dt); m.userData.o += dt; if (m.userData.o > 1.1) m.visible = false; }
++      const e = yumus(0, 1, zk), big = 1 + 0.4 * devK;
++      zarMesh.visible = zk > 0.004;
++      if (zarMesh.visible) {
++        const e2 = 0.3 + 0.7 * e, ke = e * big;
++        for (let q = 0; q < 2; q++) {
++          const T = q ? K.sag : K.sol;
++          bw(T.ust, shP); bw(T.on, elP); bw(T.el, hdP); tipP.copy(hdP).addScaledVector(d2.subVectors(hdP, elP).normalize(), 0.14);
++          bw(T.uyluk, hipP);
++          for (let i = 0; i <= ZN; i++) {
++            const s = i / ZN * e2;
++            yol(shP, elP, tipP, s, zA); zT.lerpVectors(hipP, tipP, s).addScaledVector(upV, -0.28 * (1 - s));
++            for (let j = 0; j <= ZM; j++) { const v = j / ZM; zarYaz(q * ZT + i * (ZM + 1) + j, zC.lerpVectors(zA, zT, v * ke)); }
++          }
++        }
++        for (const ad of ['sol', 'sag']) { const T = K[ad], L = legP[ad]; bw(T.uyluk, L[0]); bw(T.baldir, L[1]); bw(T.ayak, L[2]); }
++        for (let i = 0; i <= ZN; i++) {
++          const s = i / ZN * e2;
++          yol(legP.sol[0], legP.sol[1], legP.sol[2], s, zL); yol(legP.sag[0], legP.sag[1], legP.sag[2], s, zR); zC.addVectors(zL, zR).multiplyScalar(0.5);
++          for (let j = 0; j <= ZM; j++) {
++            const v = j / ZM, k = 2 * ZT + i * (ZM + 1) + j;
++            if (v < 0.5) zarYaz(k, zA.lerpVectors(zL, zC, 2 * v * e)); else zarYaz(k, zA.lerpVectors(zR, zC, 2 * (1 - v) * e));
++          }
++        }
++        zarGeo.attributes.position.needsUpdate = true; zarGeo.computeVertexNormals(); zarGeo.attributes.normal.needsUpdate = true;
++        zarMat.uniforms.uT.value = t; zarMat.uniforms.uDir.value.copy(fwd).negate();
++        zarMat.uniforms.uBill.value = 0.08 + 0.06 * devK; zarMat.uniforms.uAmp.value = 1 + 0.5 * devK;
++        zarMat.uniforms.uDev.value = devK; zarMat.uniforms.uA.value = yumus(0, 0.5, zk);
++      }
++      // hız izi (dalış)
++      izK += ((d === 'dalis' ? 1 : 0) - izK) * (1 - Math.exp(-dt * (d === 'dalis' ? 14 : 8)));
++      izMesh.visible = izK > 0.02;
++      if (izMesh.visible) {
++        bw(kb('hips'), hipP);
++        const L = (1.4 + sp * 0.12) * izK;
++        for (let i = 0; i < 6; i++) {
++          const a = i / 6 * Math.PI * 2 + t * 2, r = 0.22 + 0.06 * (i % 2), h = 0.15 + 0.3 * (i % 3);
++          zA.copy(hipP).addScaledVector(yanSol, Math.cos(a) * r).addScaledVector(fwd, Math.sin(a) * r).addScaledVector(upV, h);
++          zT.copy(zA).addScaledVector(upV, -L * (0.6 + 0.4 * ((i * 37) % 10) / 10));
++          izPos.set([zA.x, zA.y, zA.z, zT.x, zT.y, zT.z], i * 6);
++        }
++        izGeo2.attributes.position.needsUpdate = true; izMat2.opacity = 0.9 * izK;
++      }
+     }
+ 
+     piv.position.y = 0.95;
+@@ -1020,8 +1160,8 @@ export function kur(G) {
+   } catch (e) { console.warn('[ZIFIR] GLTFLoader hata:', e); }
+ 
+   // ---------- test sürücüsü ----------
+-  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan', 'duvarKos'];
+-  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0], duvarKos: [0, 6] };
++  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan', 'duvarKos', 'suzul', 'dalis'];
++  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0], duvarKos: [0, 6], suzul: [11, -2], dalis: [12, -22] };
+   function testSur(dt) {
+     const sabit = QS.get('durum');
+     const idx = sabit ? SIRA.indexOf(sabit) : Math.floor(G.t) % SIRA.length;
+@@ -1037,7 +1177,7 @@ export function kur(G) {
+     if (d === 'duvar') grup.position.y += 0;
+     // her zaman bir dokunaç göster
+     const el = elNoktasi('sag');
+-    if (!QS.has('tensiz') && d !== 'sapan' && d !== 'sallan') dokunac('sag', el, new V3(grup.position.x + 2.2, 5.5, grup.position.z + 3));
++    if (!QS.has('tensiz') && d !== 'sapan' && d !== 'sallan' && d !== 'suzul' && d !== 'dalis') dokunac('sag', el, new V3(grup.position.x + 2.2, 5.5, grup.position.z + 3));
+     if (d === 'kamci') dokunac('kamci', elNoktasi('sag'), new V3(grup.position.x - 0.4, 1.2, grup.position.z + 4)); else dokunac('kamci', null, null);
+     if (d === 'sapan') { dokunac('sag', elNoktasi('sag'), new V3(grup.position.x - 4, 3, grup.position.z + 5)); dokunac('sol', elNoktasi('sol'), new V3(grup.position.x + 4, 3, grup.position.z + 5)); }
+     else if (d === 'sallan') { const sl = QS.get('el') === 'sol'; ayarla({ el: sl ? 'sol' : 'sag' }); dokunac(sl ? 'sol' : 'sag', elNoktasi(sl ? 'sol' : 'sag'), new V3(grup.position.x + (sl ? 2.2 : -2.2), 6, grup.position.z + 3)); dokunac(sl ? 'sag' : 'sol', null, null); }
+@@ -1152,7 +1292,7 @@ export function kur(G) {
+       const aci = (parseFloat(QS.get('aci')) || 0) * Math.PI / 180, mes = parseFloat(QS.get('mes')) || 4;
+       const c = tmpV.copy(grup.position); c.y += (parseFloat(QS.get('bak')) || 1.0) * (son.dev && !QS.has('bak') ? 1.9 : 1);
+       const ox = 2.1, oz = 3.2;
+-      G.kamera.position.set(c.x + (ox * Math.cos(aci) + oz * Math.sin(aci)) * mes / 3.93, c.y + 0.9 * mes / 3.93, c.z + (oz * Math.cos(aci) - ox * Math.sin(aci)) * mes / 3.93);
++      G.kamera.position.set(c.x + (ox * Math.cos(aci) + oz * Math.sin(aci)) * mes / 3.93, c.y + 0.9 * mes / 3.93 + (parseFloat(QS.get('yuk')) || 0), c.z + (oz * Math.cos(aci) - ox * Math.sin(aci)) * mes / 3.93);
+       G.kamera.lookAt(c);
+     }
+   };
