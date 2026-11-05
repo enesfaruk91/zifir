@@ -243,7 +243,8 @@ export function kur(G) {
     const odul = Math.round(100 * (1 + zorluk() * 0.5)) + (gIdx === 5 ? 300 : 0);
     G.gorev.puan += odul; kayit.puan = G.gorev.puan;
     G.oyuncu?.gucEkle?.(gIdx === 5 ? 60 : 25);
-    G.olay.emit('gorevBitti', { ad });
+    G.efekt?.yavasCekim?.(0.4, 0.8);
+    G.olay.emit('gorevBitti', { ad, odul, puan: G.gorev.puan });
     msj('Görev tamam: ' + ad + '  +' + odul + ' puan!', 4);
     let sonraki = gIdx + 1;
     if (sonraki >= GOREVLER.length) { sonraki = 0; kayit.tur++; }
@@ -257,8 +258,75 @@ export function kur(G) {
     if (gGec === GOREVLER[2] && v && v.tur !== 'kamyonet' && !v.dev) sayac.robot++;
   });
 
-  G.gorev = { aktif, puan: kayit.puan || 0, toplamKure: kayit.toplamKure || 0, kayit, atla() { if (gGec) bitir(); } };
-  baslat(kayit.zincir || 0);
+  // ---------- EĞİTİM zinciri ----------
+  const egitimSay = { salla: 0, dron: 0, zip: 0, dev: 0, konus: 0 };
+  let egitim = -1, egitimDronlar = [], egitimY0 = 0, egitimBekle = 0;
+  const catiBul = (min, max, hMin = 12) => {
+    const bs = sehir()?.binalar; if (!bs?.length) return null;
+    const p = oyuncu(); let en = null, enD = 1e9;
+    for (const b of bs) {
+      if (b.h < hMin) continue;
+      const d = Math.hypot(b.x - p.x, b.z - p.z);
+      if (d < min || d > max) continue;
+      if (d < enD) { enD = d; en = b; }
+    }
+    return en ? V(en.x, en.h, en.z) : null;
+  };
+  const EGITIM = [
+    { ad: 'Çatıya Çık', metin: 'Sağ tıkı BASILI tut: yukarı ağ at', tuslar: ['Sağ tık (basılı)'], hedef: 1,
+      baslat() { egitimY0 = oyuncu().y; egitimSay.konus = 0; aktif.isaret = catiBul(15, 90, Math.max(18, egitimY0 + 10)); },
+      guncelle() { const o = G.oyuncu; return egitimSay.konus > 0 || (o?.yerde && o.konum.y > Math.max(12, egitimY0 + 8)); } },
+    { ad: 'Sallan', metin: 'Binadan binaya sallan', tuslar: ['Sağ tık (basılı)', 'bırak: fırla'], hedef: 3,
+      baslat() { egitimSay.salla = 0; aktif.isaret = null; },
+      guncelle() { aktif.ilerleme = Math.min(3, egitimSay.salla); return egitimSay.salla >= 3; } },
+    { ad: 'Hedefe Çekil', metin: 'E ile hedefe çekil', tuslar: ['E'], hedef: 1,
+      baslat() { egitimSay.zip = 0; aktif.isaret = catiBul(30, 120, 20); },
+      guncelle() { return egitimSay.zip > 0; } },
+    { ad: 'Dronları Vur', metin: 'Sol tıkla 3 dronu vur', tuslar: ['Sol tık'], hedef: 3,
+      baslat() { egitimSay.dron = 0; egitimDronlar = []; },
+      guncelle() {
+        aktif.ilerleme = Math.min(3, egitimSay.dron);
+        egitimDronlar = egitimDronlar.filter(d => d.canli);
+        let kalan = 3 - egitimSay.dron - egitimDronlar.length;
+        for (; kalan > 0 && G.dusman?.olustur; kalan--) { const d = G.dusman.olustur('dron'); if (d) egitimDronlar.push(d); }
+        const e = G.dusman?.enYakin?.(oyuncu(), 400); aktif.isaret = e?.konum ?? null;
+        return egitimSay.dron >= 3;
+      } },
+    { ad: 'Dev Zifir', metin: 'Q ile Dev Zifir ol', tuslar: ['Q'], hedef: 1,
+      baslat() { egitimSay.dev = 0; aktif.isaret = null; const o = G.oyuncu; if (o && o.guc < (o.gucMax || 100)) o.gucEkle?.((o.gucMax || 100) - o.guc); },
+      guncelle() { return egitimSay.dev > 0; } },
+  ];
+  function egitimAdim(i) {
+    egitim = i; egitimBekle = 0; const a = EGITIM[i];
+    aktif.ad = 'EĞİTİM ' + (i + 1) + '/' + EGITIM.length + ' · ' + a.ad; aktif.aciklama = a.metin;
+    aktif.ilerleme = 0; aktif.hedef = a.hedef; aktif.isaret = null; a.baslat();
+    const ip = { adim: i + 1, toplam: EGITIM.length, baslik: a.ad, metin: a.metin, tuslar: a.tuslar };
+    if (G.gorev) G.gorev.ipucu = ip;
+    G.olay.emit('ipucu', ip);
+  }
+  function egitimBaslat() {
+    gGec?.temizle?.(); gGec = null; kayit.egitimBitti = false; kaydet();
+    for (const h of halkalar) h.visible = false;
+    egitimAdim(0);
+  }
+  function egitimBitir() {
+    egitim = -1; kayit.egitimBitti = true; G.gorev.puan += 200; kayit.puan = G.gorev.puan; kaydet();
+    G.efekt?.yavasCekim?.(0.4, 0.8);
+    G.gorev.ipucu = null;
+    G.olay.emit('ipucuKapat', {});
+    G.olay.emit('gorevBitti', { ad: 'EĞİTİM', odul: 200, puan: G.gorev.puan });
+    baslat(kayit.zincir || 0);
+  }
+  G.olay.on('sallanBasla', () => { egitimSay.salla++; });
+  G.olay.on('zip', () => { egitimSay.zip++; });
+  G.olay.on('konus', () => { egitimSay.konus++; });
+  G.olay.on('devBasla', () => { egitimSay.dev++; });
+  G.olay.on('robotYenildi', v => { if (egitim === 3 && v?.tur === 'dron') egitimSay.dron++; });
+
+  G.gorev = { aktif, puan: kayit.puan || 0, toplamKure: kayit.toplamKure || 0, kayit, atla() { if (egitim >= 0) egitimAdim(egitim); else if (gGec) bitir(); },
+    egitimiTekrarla() { egitimBaslat(); }, get egitimde() { return egitim >= 0; } };
+  const egitimIstek = !kayit.egitimBitti && (!G.test || new URLSearchParams(location.search).has('egitim'));
+  if (egitimIstek) egitimAdim(0); else baslat(kayit.zincir || 0);
   kureleriCiz();
 
   function kureTopla(dt) {
@@ -289,7 +357,16 @@ export function kur(G) {
       if (kediDurum.kurtarildi) kedi.position.y += dt * 1.5, kedi.scale.multiplyScalar(Math.max(0.5, 1 - dt * 2));
       else kedi.scale.setScalar(1.7 + Math.sin(t * 2) * 0.05);
     }
-    if (gGec) { if (gGec.guncelle(dt)) bitir(); }
+    if (egitim >= 0) {
+      if (egitimBekle > 0) egitimBekle -= dt;
+      else if (EGITIM[egitim].guncelle()) {
+        G2.olay.emit('ipucuTamam', { adim: egitim + 1 });
+        G2.efekt?.flas?.('#2ef2e0', 0.2);
+        egitimBekle = 1.4;
+        const sn = egitim + 1;
+        setTimeout(() => { if (egitim !== sn - 1) return; if (sn >= EGITIM.length) egitimBitir(); else egitimAdim(sn); }, 1400);
+      }
+    } else if (gGec) { if (gGec.guncelle(dt)) bitir(); }
     // ışık sütunu
     const is = aktif.isaret;
     if (is) {
