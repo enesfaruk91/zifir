@@ -21,14 +21,18 @@ export function kur(G) {
   const gSil = new THREE.CylinderGeometry(1, 1, 1, 10);
   const mPas = new THREE.MeshStandardMaterial({ color: 0xc4561a, roughness: 0.75, metalness: 0.45 });
   const mPasKoyu = new THREE.MeshStandardMaterial({ color: 0x7a3512, roughness: 0.8, metalness: 0.5 });
-  const mGoz = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe2a8, emissiveIntensity: 0.9, roughness: 0.3 });
+  const mGoz = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe2a8, emissiveIntensity: 0.2, roughness: 0.3 });
   const mBebek = new THREE.MeshBasicMaterial({ color: 0x1a0f20 });
-  const mPil = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x66ffcc).multiplyScalar(2.2), toneMapped: false });
-  const mTurunc = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(2), toneMapped: false });
-  const mDron = new THREE.MeshStandardMaterial({ color: 0x5d4a78, roughness: 0.4, metalness: 0.6 });
-  const mDronKol = new THREE.MeshStandardMaterial({ color: 0x2c2238, roughness: 0.6, metalness: 0.5 });
+  const mPil = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x66ffcc).multiplyScalar(1.1), toneMapped: false });
+  const mTurunc = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(0.85) });
+  const mDron = new THREE.MeshStandardMaterial({ color: 0xa8481a, roughness: 0.75, metalness: 0.5 });
+  const mDronKol = new THREE.MeshStandardMaterial({ color: 0x2a2624, roughness: 0.7, metalness: 0.6 });
+  const mDronYan = new THREE.MeshBasicMaterial({ color: 0x55dd77 });
+  const mDronYan2 = new THREE.MeshBasicMaterial({ color: 0xdd5544 });
+  const gDisk = new THREE.CylinderGeometry(1, 1, 0.02, 20);
   const mDronGoz = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3ff0e0).multiplyScalar(2), toneMapped: false });
-  const mPerve = new THREE.MeshBasicMaterial({ color: 0xcfc6e8, transparent: true, opacity: 0.55 });
+  const mPerve = new THREE.MeshBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.16, depthWrite: false });
+  const mPerveKanat = new THREE.MeshBasicMaterial({ color: 0x1c1c1c, transparent: true, opacity: 0.6, depthWrite: false });
   const mKam = new THREE.MeshStandardMaterial({ color: 0x6c2e7a, roughness: 0.6, metalness: 0.4 });
   const mKabin = new THREE.MeshStandardMaterial({ color: 0xe0742a, roughness: 0.6, metalness: 0.3 });
   const mTeker = new THREE.MeshStandardMaterial({ color: 0x15101a, roughness: 0.9 });
@@ -103,31 +107,134 @@ export function kur(G) {
     kivilcim(m, 0xffd060, 5, 5);
   }
 
-  // ---------- enerji topları (dron) ----------
-  const topGeo = new THREE.SphereGeometry(0.45, 12, 10);
-  const topMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff9a3c).multiplyScalar(2.4), toneMapped: false, fog: false });
+  // ---------- dron enerji mermisi: küçük, yavaş, kısa kuyruklu ----------
+  const topGeo = new THREE.SphereGeometry(0.2, 10, 8);
+  const kuyrukGeo = new THREE.ConeGeometry(0.17, 1.1, 8); kuyrukGeo.rotateX(-Math.PI / 2); kuyrukGeo.translate(0, 0, -0.55);
+  const topMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff9a3c).multiplyScalar(1.3), toneMapped: false, fog: false });
+  const kuyrukMat = new THREE.MeshBasicMaterial({ color: 0xff6a1a, transparent: true, opacity: 0.45, depthWrite: false });
   const toplar = [];
   for (let i = 0; i < 12; i++) {
-    const m = new THREE.Mesh(topGeo, topMat); m.visible = false; sahne.add(m);
+    const m = new THREE.Group(); m.add(new THREE.Mesh(topGeo, topMat)); m.add(new THREE.Mesh(kuyrukGeo, kuyrukMat)); m.visible = false; sahne.add(m);
     toplar.push({ m, aktif: false, hiz: V(), omur: 0 });
   }
   function topAt(kaynak, hedef) {
     const t = toplar.find(x => !x.aktif); if (!t) return;
-    t.aktif = true; t.omur = 7; t.m.visible = true; t.m.position.copy(kaynak);
-    t.hiz.copy(hedef).sub(kaynak).normalize().multiplyScalar(12);
+    t.aktif = true; t.omur = 9; t.m.visible = true; t.m.position.copy(kaynak);
+    t.hiz.copy(hedef).sub(kaynak).normalize().multiplyScalar(9);
+    t.m.lookAt(TMP.copy(kaynak).add(t.hiz));
   }
   function toplariGuncelle(dt, p) {
     for (const t of toplar) {
       if (!t.aktif) continue;
       t.omur -= dt; t.m.position.addScaledVector(t.hiz, dt);
-      t.m.scale.setScalar(1 + 0.18 * Math.sin(G.t * 9));
       TMP.copy(p).y += 1;
       let son = t.omur <= 0;
-      if (!son && t.m.position.distanceTo(TMP) < 1.4) { G.oyuncu?.hasarAl?.(8, t.m.position); son = true; }
-      if (!son && G.sehir?.carpis) { const r = G.sehir.carpis(t.m.position, 0.4); if (r && (r.duvar || r.normal)) son = true; }
-      if (son) { kivilcim(t.m.position, 0xffa040, 7, 5); t.aktif = false; t.m.visible = false; }
+      if (!son && t.m.position.distanceTo(TMP) < 1.2) { G.oyuncu?.hasarAl?.(5, t.m.position); son = true; }
+      if (!son && G.sehir?.carpis) { const r = G.sehir.carpis(t.m.position, 0.25); if (r && (r.duvar || r.normal)) son = true; }
+      if (son) { kivilcim(t.m.position, 0xffa040, 6, 4); t.aktif = false; t.m.visible = false; }
     }
   }
+
+  // ---------- jöle mermisi (oyuncu 'atis') ----------
+  const jGeo = new THREE.SphereGeometry(0.25, 14, 10);
+  const jMat = new THREE.MeshPhysicalMaterial({ color: 0x030205, roughness: 0.15, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0x2a0a50, emissiveIntensity: 0.35, sheen: 1, sheenColor: new THREE.Color(0x9a50ff) });
+  const jIzGeo = new THREE.ConeGeometry(0.2, 1.6, 8); jIzGeo.rotateX(-Math.PI / 2); jIzGeo.translate(0, 0, -0.8);
+  const jIzMat = new THREE.MeshBasicMaterial({ color: 0x8a3cff, transparent: true, opacity: 0.4, depthWrite: false });
+  const mermiler = [];
+  for (let i = 0; i < 40; i++) {
+    const m = new THREE.Group(); m.add(new THREE.Mesh(jGeo, jMat)); m.add(new THREE.Mesh(jIzGeo, jIzMat)); m.visible = false; sahne.add(m);
+    mermiler.push({ m, aktif: false, hiz: V(), omur: 0, guc: 1, hedef: null, bas: V() });
+  }
+  const hJole = havuz(new THREE.SphereGeometry(0.1, 7, 6), new THREE.MeshStandardMaterial({ color: 0x07030c, roughness: 0.2, metalness: 0.3, emissive: 0x3a1070, emissiveIntensity: 0.5 }), 120, 14);
+  function jole(konum, n = 8, hizi = 5) {
+    for (let j = 0; j < n; j++) {
+      KV.set(rnd(-1, 1), rnd(-0.2, 1), rnd(-1, 1)).normalize().multiplyScalar(rnd(0.4, 1) * hizi);
+      ekle(hJole, konum.x, konum.y, konum.z, KV.x, KV.y + 1.5, KV.z, rnd(0.35, 0.7), rnd(0.5, 1.2), -1000);
+    }
+  }
+  // duvar lekeleri
+  const lekeGeo = new THREE.CircleGeometry(0.35, 14);
+  const lekeler = [];
+  for (let i = 0; i < 30; i++) {
+    const m = new THREE.Mesh(lekeGeo, new THREE.MeshBasicMaterial({ color: 0x0a0410, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide }));
+    m.visible = false; sahne.add(m); lekeler.push({ m, omur: 0 }); 
+  }
+  let lekeNo = 0;
+  function lekeBirak(nokta, normal) {
+    const l = lekeler[lekeNo]; lekeNo = (lekeNo + 1) % lekeler.length;
+    l.omur = 3; l.m.visible = true; l.m.material.opacity = 0.9;
+    l.m.position.copy(nokta).addScaledVector(normal, 0.03);
+    l.m.lookAt(TMP.copy(nokta).add(normal)); l.m.scale.setScalar(rnd(0.8, 1.3));
+  }
+  let isabetSay = 0, dronYenilenSay = 0;
+  function mermiAt(v) {
+    if (!v || !v.baslangic || !v.yon) return;
+    const t = mermiler.find(x => !x.aktif); if (!t) return;
+    t.aktif = true; t.omur = 2.2; t.guc = v.guc || 1; t.hedef = v.hedef || null;
+    t.hiz.copy(v.yon).normalize().multiplyScalar(90);
+    t.bas.copy(v.baslangic);
+    t.m.position.copy(v.baslangic); t.m.visible = true; t.m.lookAt(TMP.copy(v.baslangic).add(t.hiz));
+  }
+  function mermiIsabet(t, e, nokta) {
+    isabetSay++; if (G.test) console.log('[DUSMAN] mermi isabet ' + isabetSay + ', dron yenildi ' + dronYenilenSay);
+    jole(nokta, 10, 6);
+    G.olay.emit('isabet', { konum: nokta.clone(), tur: e.tur });
+    const yon = TMP2.copy(t.hiz).normalize().clone();
+    if (e.dev) {
+      const ileri = TMP3.set(Math.sin(e.yaw), 0, Math.cos(e.yaw));
+      TMP.copy(t.bas).sub(e.konum).setY(0).normalize();
+      if (ileri.dot(TMP) < -0.2) { vur(e, 15 * t.guc, yon); e.sersem = 0.6; }
+      else if (G.t - sonUyari > 4) { sonUyari = G.t; msj('Sırtındaki parlayan pili vur! Arkasına geç!', 3); }
+      return;
+    }
+    const dmg = e.tur === 'dron' ? 35 : e.tur === 'kamyonet' ? 10 : 20;
+    vur(e, dmg * t.guc, yon);
+  }
+  function mermileriGuncelle(dt) {
+    for (const l of lekeler) if (l.omur > 0) { l.omur -= dt; l.m.material.opacity = Math.min(0.9, l.omur * 1.2); if (l.omur <= 0) l.m.visible = false; }
+    for (const t of mermiler) {
+      if (!t.aktif) continue;
+      t.omur -= dt;
+      // hafif güdüm
+      if (t.hedef && t.hedef.canli) {
+        merkez(t.hedef, TMP).sub(t.m.position).normalize();
+        TMP2.copy(t.hiz).normalize();
+        const ac = Math.acos(Math.max(-1, Math.min(1, TMP.dot(TMP2))));
+        if (ac > 1e-3) { const k = Math.min(1, 2.2 * dt / ac); TMP2.lerp(TMP, k).normalize(); t.hiz.copy(TMP2).multiplyScalar(90); }
+      }
+      const adim = 90 * dt;
+      KV.copy(t.m.position);
+      let son = t.omur <= 0, isabetE = null;
+      // düşman: segment-küre
+      TMP2.copy(t.hiz).normalize();
+      let enT = adim;
+      for (const e of liste) {
+        if (!e.canli) continue;
+        merkez(e, TMP).sub(KV);
+        const pr = TMP.dot(TMP2), c = Math.max(0, Math.min(adim, pr));
+        const yk = TMP3.copy(TMP2).multiplyScalar(c).sub(TMP).length();
+        if (yk < e.yr + 0.25 && c <= enT) { enT = c; isabetE = e; }
+      }
+      // bina / zemin
+      let duvar = null, dN = null, dT = adim + 1;
+      const sh = G.sehir;
+      if (sh?.ankrajBul) {
+        const r = sh.ankrajBul(KV, TMP2, adim + 0.3);
+        if (r) { dT = r.nokta.distanceTo(KV); duvar = r.nokta.clone(); dN = r.normal.clone(); }
+      }
+      const yeni = KV.clone().addScaledVector(TMP2, adim);
+      if (!duvar && sh?.zeminY && yeni.y < sh.zeminY(yeni.x, yeni.z) + 0.1) { duvar = yeni.clone(); duvar.y = sh.zeminY(yeni.x, yeni.z); dN = V(0, 1, 0); dT = adim; }
+      if (isabetE && enT <= dT) {
+        const nok = KV.clone().addScaledVector(TMP2, enT);
+        mermiIsabet(t, isabetE, nok); son = true;
+      } else if (duvar) {
+        jole(duvar, 6, 4); lekeBirak(duvar, dN); son = true;
+      } else t.m.position.copy(yeni);
+      if (!son) t.m.lookAt(TMP.copy(t.m.position).add(t.hiz));
+      if (son) { t.aktif = false; t.m.visible = false; }
+    }
+  }
+  G.olay.on('atis', mermiAt);
 
   // ---------- yardımcılar ----------
   const liste = [];
@@ -159,14 +266,24 @@ export function kur(G) {
   }
   function dronYap() {
     const g = new THREE.Group(), ic = new THREE.Group(); g.add(ic);
-    parca(gKure, mDron, 0.55, 0.38, 0.55, 0, 0, 0, ic);
-    const goz = parca(gKure, mDronGoz, 0.22, 0.22, 0.12, 0, 0.02, 0.5, ic);
-    parca(gKutu, mDronKol, 1.7, 0.06, 0.12, 0, 0.22, 0, ic);
-    const perve = [-1, 1].map(s => {
-      parca(gSil, mDronKol, 0.05, 0.12, 0.05, s * 0.85, 0.28, 0, ic);
-      return parca(gKutu, mPerve, 0.8, 0.02, 0.1, s * 0.85, 0.36, 0, ic);
-    });
-    return { g, ic, perve, goz };
+    parca(gKure, mDron, 0.5, 0.2, 0.5, 0, 0, 0, ic);                 // gövde
+    parca(gKutu, mDronKol, 0.5, 0.06, 0.5, 0, 0.17, 0, ic);          // üst kapak
+    const perve = [];
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + i * Math.PI / 2, kx = Math.sin(a), kz = Math.cos(a);
+      const kol = parca(gKutu, mDronKol, 0.09, 0.07, 1.0, kx * 0.55, 0.02, kz * 0.55, ic); kol.rotation.y = a;
+      parca(gSil, mDronKol, 0.12, 0.2, 0.12, kx * 1.05, 0.08, kz * 1.05, ic);
+      const pg = new THREE.Group(); pg.position.set(kx * 1.05, 0.2, kz * 1.05); ic.add(pg);
+      parca(gDisk, mPerve, 0.5, 1, 0.5, 0, 0, 0, pg);
+      parca(gKutu, mPerveKanat, 1.15, 0.015, 0.09, 0, 0.01, 0, pg);
+      perve.push(pg);
+    }
+    parca(gKure, mDronKol, 0.16, 0.16, 0.16, 0, -0.2, 0.08, ic);     // kamera yuvası
+    const gozMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff2a14).multiplyScalar(2), toneMapped: false });
+    const goz = parca(gKure, gozMat, 0.07, 0.07, 0.07, 0, -0.27, 0.13, ic);
+    parca(gKure, mDronYan, 0.04, 0.04, 0.04, 0.5, 0.0, 0.0, ic);
+    parca(gKure, mDronYan2, 0.04, 0.04, 0.04, -0.5, 0.0, 0.0, ic);
+    return { g, ic, perve, goz, gozMat };
   }
   function kamyonetYap() {
     const g = new THREE.Group(), ic = new THREE.Group(); g.add(ic);
@@ -190,7 +307,7 @@ export function kur(G) {
       itme: V(), vy: 0, sal: -1, bekle: rnd(0.5, 1.5), vurus: 0, pop: 0, oy: 1.2, yr: 0.7, hizMax: 3.6, vitrin: false, ang: rnd(0, 6.28) };
     let m;
     if (tur === 'robot') { m = robotYap(dev); e.oy = dev ? 4.2 : 1.2; e.yr = dev ? 2.4 : 0.7; Object.assign(e, { ic: m.ic, kol: m.kol, bac: m.bac, pil: m.pil, goz: m.goz }); e.olcek = dev ? 3.5 : 1; }
-    else if (tur === 'dron') { m = dronYap(); e.oy = 0; e.yr = 0.8; Object.assign(e, { ic: m.ic, perve: m.perve, goz: m.goz }); e.olcek = 1; }
+    else if (tur === 'dron') { m = dronYap(); e.oy = 0; e.yr = 0.9; Object.assign(e, { ic: m.ic, perve: m.perve, goz: m.goz, gozMat: m.gozMat }); e.olcek = 1; }
     else { m = kamyonetYap(); e.oy = 1.2; e.yr = 1.8; Object.assign(e, { ic: m.ic, tek: m.tek }); e.olcek = 1; }
     e.grup = m.g; m.g.visible = false; sahne.add(m.g);
     liste.push(e); return e;
@@ -202,13 +319,13 @@ export function kur(G) {
     e.konum.copy(konum); e.canli = true; e.grup.visible = true;
     e.sersem = 0; e.cekil = 0; e.vy = 0; e.sal = -1; e.vurus = 0; e.pop = 0; e.itme.set(0, 0, 0); e.bekle = rnd(0.8, 2);
     if (e.tur === 'robot') { e.canMax = e.dev ? 100 : 40; e.hizMax = e.dev ? 3 : rnd(3.2, 4.2); }
-    else if (e.tur === 'dron') { e.canMax = 20; e.hizMax = 9; e.yar = rnd(20, 30); }
+    else if (e.tur === 'dron') { e.canMax = 40; e.hizMax = 8; e.yar = rnd(8, 15); e.dusuyor = false; e.grup.rotation.set(0, 0, 0); }
     else { e.canMax = 75; e.hizMax = 13; }
     e.can = e.canMax; e.grup.position.copy(e.konum);
     return e;
   }
   function al(tur) {
-    let e = liste.find(x => !x.canli && x.tur === tur && !x.dev);
+    let e = liste.find(x => !x.canli && !x.dusuyor && x.tur === tur && !x.dev);
     return e || olusturVarlik(tur, false);
   }
 
@@ -216,12 +333,13 @@ export function kur(G) {
     const p = oyuncuKonum(), s = G.sehir;
     for (let i = 0; i < 8; i++) {
       let v = null;
+      if (tur === 'dron') break;
       if (s) v = tur === 'dron' ? s.rastgeleCati?.() : (Math.random() < 0.7 ? s.sokakNoktasi?.() : s.rastgeleCati?.());
       if (!v) break;
       const d = Math.hypot(v.x - p.x, v.z - p.z);
       if (d >= 40 && d <= 120) return v.clone();
     }
-    const a = rnd(0, 6.283), r = rnd(45, 115);
+    const a = rnd(0, 6.283), r = tur === 'dron' ? rnd(25, 50) : rnd(45, 100);
     const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
     return V(x, zemin(x, z), z);
   }
@@ -232,7 +350,7 @@ export function kur(G) {
       const p = oyuncuKonum(), a = rnd(0, 6.283), r = rnd(yakin[0], yakin[1]);
       const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; v = V(x, zemin(x, z), z);
     } else v = dogmaNoktasi(tur);
-    if (tur === 'dron') { v.y = Math.max(v.y, zemin(v.x, v.z)) + rnd(10, 28); }
+    if (tur === 'dron') { v.y = Math.max(v.y, zemin(v.x, v.z)) + rnd(8, 16); }
     etkinlestir(e, v); e.yaw = rnd(0, 6.28); e.vitrin = !!yakin;
     return e;
   }
@@ -272,11 +390,30 @@ export function kur(G) {
   // ---------- hasar ----------
   let devAcik = false, sonUyari = -10;
   function yen(e) {
-    e.canli = false; e.grup.visible = false;
-    merkez(e, TMP3);
-    patlat(TMP3, e.dev ? 3.5 : e.tur === 'kamyonet' ? 2 : 1, e.konum.y);
+    e.canli = false;
+    if (e.tur === 'dron') { e.dusuyor = true; e.vy = 2; e.dvx = rnd(-2, 2); e.dvz = rnd(-2, 2); e.dron = true; dronYenilenSay++; }
+    else {
+      e.grup.visible = false;
+      merkez(e, TMP3);
+      patlat(TMP3, e.dev ? 3.5 : e.tur === 'kamyonet' ? 2 : 1, e.konum.y);
+    }
     G.olay.emit('robotYenildi', { konum: e.konum.clone(), tur: e.tur, dev: e.dev });
     G.oyuncu?.gucEkle?.(e.dev ? 50 : 15);
+  }
+  function dusenleriGuncelle(dt) {
+    for (const e of liste) {
+      if (!e.dusuyor) continue;
+      e.vy -= 22 * dt; e.konum.y += e.vy * dt; e.konum.x += e.dvx * dt; e.konum.z += e.dvz * dt;
+      e.yaw += 9 * dt; e.grup.rotation.set(0.5 * Math.sin(G.t * 7), e.yaw, 0.9);
+      e.grup.position.copy(e.konum);
+      for (let i = 0; i < 4; i++) e.perve[i].rotation.y += 0.2;
+      if (Math.random() < 0.5) kivilcim(e.konum, 0xff9040, 1, 3);
+      const gy = zemin(e.konum.x, e.konum.z);
+      if (e.konum.y <= gy + 0.3) {
+        e.dusuyor = false; e.grup.visible = false; e.grup.rotation.set(0, 0, 0);
+        TMP3.set(e.konum.x, gy + 0.3, e.konum.z); patlat(TMP3, 1.4, gy);
+      }
+    }
   }
   function vur(e, miktar, yon) {
     e.can -= miktar; e.pop = 0.25;
@@ -375,25 +512,27 @@ export function kur(G) {
       e.ang += dt * 0.25;
       const gy = zemin(e.konum.x, e.konum.z);
       const hx = p.x + Math.cos(e.ang) * e.yar, hz = p.z + Math.sin(e.ang) * e.yar;
-      const hyy = Math.max(p.y + 7, gy + 8) + Math.sin(G.t * 1.3 + e.faz) * 1.5;
+      const hyy = Math.max(p.y + 4.5, gy + 6) + Math.sin(G.t * 1.3 + e.faz) * 1.2;
       TMP.set(hx - e.konum.x, hyy - e.konum.y, hz - e.konum.z);
       const l = TMP.length();
       if (l > 0.5) e.konum.addScaledVector(TMP, Math.min(e.hizMax, l * 0.8) * dt / l);
       e.yaw += aciFark(e.yaw, Math.atan2(p.x - e.konum.x, p.z - e.konum.z)) * Math.min(1, dt * 3);
       e.bekle -= dt;
       const d3 = e.konum.distanceTo(p);
-      e.goz.scale.setScalar(1);
-      if (e.bekle < 0.7 && d3 < 70) e.goz.scale.setScalar(1 + (0.7 - e.bekle) * 1.2);
+      let par = 1;
+      if (e.bekle < 2.5 && d3 < 60) par = 1 + 0.6 * (Math.sin(G.t * (8 + (2.5 - e.bekle) * 6)) > 0 ? 1 : 0.2);
+      e.goz.scale.setScalar(0.07 * par); e.gozMat.color.setRGB(2 * par * 0.7, 0.12, 0.08);
       if (e.bekle <= 0) {
-        e.bekle = rnd(3.5, 5);
-        if (d3 < 70) topAt(merkez(e, TMP), TMP2.copy(p).setY(p.y + 1));
+        e.bekle = rnd(4.5, 6.5);
+        if (d3 < 60) topAt(TMP.set(e.konum.x, e.konum.y - 0.3, e.konum.z), TMP2.copy(p).setY(p.y + 1));
       }
     }
     e.faz += dt * 40;
-    for (let i = 0; i < 2; i++) e.perve[i].rotation.y = e.faz * (i ? 1 : -1);
-    e.ic.rotation.z = Math.sin(G.t * 2 + e.ang) * 0.1 + (e.sersem > 0 ? Math.sin(G.t * 30) * 0.2 : 0);
+    for (let i = 0; i < 4; i++) e.perve[i].rotation.y = e.faz * (i & 1 ? 1 : -1);
+    e.ic.rotation.z = Math.sin(G.t * 2 + e.ang) * 0.08 + (e.sersem > 0 ? Math.sin(G.t * 30) * 0.2 : 0);
+    e.ic.rotation.x = Math.sin(G.t * 1.7 + e.faz) * 0.06; e.ic.position.y = Math.sin(G.t * 2.4 + e.ang) * 0.12;
     if (G.sehir?.carpis) {
-      const r = G.sehir.carpis(e.konum, 1.4);
+      const r = G.sehir.carpis(e.konum, 1.0);
       if (r?.duzeltme) e.konum.add(r.duzeltme);
     }
   }
@@ -437,13 +576,13 @@ export function kur(G) {
     if (e.pop > 0) { e.pop -= dt; const k = Math.max(0, e.pop) * 4; sy *= 1 - 0.25 * k; sxz *= 1 + 0.15 * k; }
     g.scale.set(sxz, sy, sxz);
     // çok uzaktakini geri dönüştür (patron ve kamyonet hariç)
-    if (!e.dev && e.tur !== 'kamyonet' && d > 200) { e.canli = false; g.visible = false; }
+    if (!e.dev && e.tur !== 'kamyonet' && d > (e.tur === 'dron' ? 90 : 130)) { e.canli = false; g.visible = false; }
   }
 
   let dogmaSayac = 0, logSayac = 0, testSayac = 0, testKuruldu = false;
   G.dusman = {
     liste,
-    robotHedef: 10, dronHedef: 6, dogmaCarpani: 1,
+    robotHedef: 4, dronHedef: 3, dogmaCarpani: 1,
     enYakin(konum, r = Infinity) {
       let en = null, enD = r;
       for (const e of liste) {
@@ -477,6 +616,9 @@ export function kur(G) {
     }
     for (let i = 0; i < 2; i++) { const e = dogur('dron', [15, 25]); e.vitrin = true; const p = oyuncuKonum(); e.konum.y = Math.max(e.konum.y, p.y + 5); }
     const k = G.dusman.olustur('kamyonet', V(30, 0, 30)); k.vitrin = true;
+    if (new URLSearchParams(location.search).has('dronfoto')) { // geçici: yakın görüntü
+      const e = dogur('dron', [6, 6]); e.vitrin = true; e.yar = 5; G.dusman.dronFoto = e;
+    }
   }
 
   G.olay.on('robotYenildi', v => { if (G.test && v.tur !== 'kamyonet') console.log('[DUSMAN] robot yenildi:', v.tur); });
@@ -491,17 +633,33 @@ export function kur(G) {
     if (dogmaSayac <= 0) {
       dogmaSayac = 0.6 / G.dusman.dogmaCarpani;
       if (toplamAktif() < MAX_AKTIF) {
-        if (aktifSay('robot') < G.dusman.robotHedef) dogur('robot');
-        else if (aktifSay('dron') < G.dusman.dronHedef) dogur('dron');
+        G.dusman.dronHedef = Math.min(6, 3 + Math.floor(G2.t / 60));
+        G.dusman.robotHedef = Math.min(8, 4 + Math.floor(G2.t / 60));
+        if (aktifSay('dron') < G.dusman.dronHedef) dogur('dron');
+        else if (aktifSay('robot') < G.dusman.robotHedef) dogur('robot');
       }
     }
     for (const e of liste) if (e.canli) varlikGuncelle(e, dt);
     toplariGuncelle(dt, oyuncuKonum());
-    havuzGuncelle(hCivata, dt); havuzGuncelle(hYay, dt); havuzGuncelle(hKivilcim, dt);
+    havuzGuncelle(hCivata, dt); havuzGuncelle(hYay, dt); havuzGuncelle(hKivilcim, dt); havuzGuncelle(hJole, dt);
+    mermileriGuncelle(dt); dusenleriGuncelle(dt);
+    if (G.dusman.dronFoto) { const f = G.dusman.dronFoto, k = G2.kamera; f.canli = true; f.grup.visible = true; k.getWorldDirection(TMP); f.konum.copy(k.position).addScaledVector(TMP, 3.2); f.konum.y -= 0.5; f.grup.position.copy(f.konum); f.can = 999; f.yaw = Math.atan2(TMP.x, TMP.z); f.grup.rotation.y = f.yaw + 2.6; f.grup.rotation.x = 0.35; }
 
     if (G2.test) {
       logSayac -= dt; testSayac -= dt;
-      if (logSayac <= 0) { logSayac = 2; console.log('[DUSMAN] aktif ' + toplamAktif()); }
+      if (logSayac <= 0) { logSayac = 2; console.log('[DUSMAN] aktif ' + toplamAktif() + ' | mermi isabet ' + isabetSay + ', dron yenildi ' + dronYenilenSay); }
+      if (!G2.__atisT) G2.__atisT = 0;
+      G2.__atisT -= dt;
+      if (G2.__atisT <= 0) {
+        G2.__atisT = 0.6;
+        const pk = oyuncuKonum(); let dr = null, dd = 1e9;
+        if (G.dusman.dronFoto) dd = -1;
+        for (const e of liste) { if (!e.canli || e.tur !== 'dron') continue; const q = e.konum.distanceTo(pk); if (q < dd) { dd = q; dr = e; } }
+        if (dr && dd !== -1) {
+          const bas = V(pk.x, pk.y + 1.3, pk.z), yon = dr.konum.clone().sub(bas).normalize();
+          G.olay.emit('atis', { baslangic: bas, yon, guc: 1, hedef: dr }); console.log('[DUSMAN] atis dr=' + dd.toFixed(1) + ' aktifMermi=' + mermiler.filter(x => x.aktif).length);
+        }
+      }
       if (testSayac <= 0) {
         testSayac = 2;
         const p = oyuncuKonum(); let hedef = null, hd = 1e9;
