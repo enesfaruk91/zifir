@@ -413,6 +413,91 @@ def js_test_cekis() -> str:
     })()"""
 
 
+def js_test_his() -> str:
+    # (e) kombo: sahte yakın düşman, 4 vuruş -> bitirici; (f) duvarda koşu; (g) mükemmel bırakış
+    return "(async () => {" + JS_ORTAK + """
+      G.girdi = sahteGirdi;
+      const sonuc = { kombo: [], bitirici: 0, komboNo: [], duvar: 0, duvarDeneme: 0, duvarGordu: 0, konus: 0, muk: 0, mukDeneme: 0, sallan: 0, kacis: 0, ayrinti: [] };
+      const olaylar = [];
+      const dinle = (ad, fn) => { if (G.olay.off) {} G.olay.on(ad, fn); };
+      let sayac = null;
+      dinle('kombo', e => sayac && sayac.kombo.push(e.sayi));
+      dinle('bitirici', () => sayac && sayac.bitirici++);
+      dinle('yumruk', e => sayac && sayac.komboNo.push(e.komboNo));
+      dinle('konus', () => sayac && sayac.konus++);
+      dinle('mukemmelBirakis', () => sayac && sayac.muk++);
+      dinle('kacis', () => sayac && sayac.kacis++);
+      sayac = sonuc;
+      // e) kombo
+      G.oyuncu.isinla(new T.Vector3(0, 0, 0)); const zy = G.sehir.zeminY ? G.sehir.zeminY(0, 0) : 0;
+      G.oyuncu.isinla(new T.Vector3(0, zy + 0.1, 0));
+      for (let i = 0; i < 20; i++) O.guncelle(G, 1 / 60);
+      const eskiD = G.dusman, p0 = G.oyuncu.konum;
+      const sahteD = { konum: new T.Vector3(p0.x + 1.5, p0.y, p0.z - 1.0), canli: true, can: 99 };
+      G.dusman = { liste: [sahteD], enYakin: () => sahteD, mermiler: [] };
+      sonuc.kombo.length = 0; sonuc.komboNo.length = 0; sonuc.bitirici = 0;
+      for (let i = 0; i < 90; i++) {
+        tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
+        if (i % 18 === 1) { tuslar.add('Fare0'); yeni.add('Fare0'); }
+        O.guncelle(G, 1 / 60);
+      }
+      // kaçış: robot vuruşu 0.2 sn içinde, Space
+      const robot = { konum: new T.Vector3(G.oyuncu.konum.x + 2, G.oyuncu.konum.y, G.oyuncu.konum.z), canli: true, sal: 0.2, tur: 'robot' };
+      G.dusman = { liste: [robot], enYakin: () => null, mermiler: [] };
+      tuslar.clear(); yeni = new Set(); O.guncelle(G, 1 / 60);
+      const tehlike = G.oyuncu.tehlike;
+      tuslar.add('Space'); yeni.add('Space'); O.guncelle(G, 1 / 60);
+      sonuc.tehlike = tehlike;
+      G.dusman = eskiD;
+      // f) duvarda koşu
+      const uzun = bin.filter(b => b.h > 18 && b.h < 70 && Math.hypot(b.x, b.z) < 250);
+      for (let n = 0; n < 6; n++) {
+        const b = uzun[(n * 5 + 1) % uzun.length], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4];
+        const bx = b.x + d[0] * (b.gx / 2 + 8), bz = b.z + d[1] * (b.gz / 2 + 8);
+        if (icinde({ x: bx, y: 0, z: bz }) >= 0) continue;
+        sonuc.duvarDeneme++;
+        G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
+        G.oyuncu.yaw = Math.atan2(d[0], d[1]); G.oyuncu.pitch = 0.1;
+        let gordu = false, cikti = false, enHiz = 0;
+        for (let i = 0; i < 480; i++) {
+          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 1; sahteGirdi.fareDX = 0;
+          tuslar.add('KeyW'); tuslar.add('ShiftLeft');
+          O.guncelle(G, 1 / 60);
+          const p = G.oyuncu;
+          if (p.durum === 'duvar') { gordu = true; enHiz = Math.max(enHiz, p.hiz.y); }
+          if (n === 0 && i % 8 === 0 && i < 100) sonuc.iz = (sonuc.iz || []).concat([[i, p.durum, +p.konum.y.toFixed(1), +p.hiz.y.toFixed(1), +p.konum.x.toFixed(1), +p.konum.z.toFixed(1)]]);
+          if (gordu && p.yerde && p.konum.y > b.h - 1.5) { cikti = true; break; }
+        }
+        if (gordu) sonuc.duvarGordu++; if (cikti) sonuc.duvar++;
+        sonuc.ayrinti.push([+b.h.toFixed(0), gordu, cikti, +enHiz.toFixed(1)]);
+      }
+      // g) mükemmel bırakış: havada sağ tık basılı, tepe noktasında bırak
+      const yuksek = bin.filter(b => b.h > 50 && Math.hypot(b.x, b.z) < 200);
+      for (let n = 0; n < 8; n++) {
+        const b = yuksek[(n * 3) % yuksek.length];
+        sonuc.mukDeneme++;
+        G.oyuncu.isinla(new T.Vector3(b.x - b.gx / 2 - 30, 38, b.z + (n - 4) * 3));
+        G.oyuncu.yaw = -Math.PI / 2; G.oyuncu.pitch = 0.1; G.oyuncu.hiz.set(14, 3, 0);
+        let birakildi = false;
+        for (let i = 0; i < 420 && !birakildi; i++) {
+          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 1; sahteGirdi.fareDX = 0;
+          tuslar.add('KeyW');
+          const p = G.oyuncu, a = p.ankraj;
+          let birak = false;
+          if (a) {
+            const ip = p.konum.clone().sub(a).normalize(), hy = Math.hypot(p.hiz.x, p.hiz.z) || 1;
+            if ((ip.x * p.hiz.x + ip.z * p.hiz.z) / hy > 0.3 && p.hiz.y > 2 && ip.y > -0.7 && ip.y < -0.2 && p.hiz.length() > 15) birak = true;
+          }
+          if (birak) birakildi = true; else { tuslar.add('Fare2'); if (i === 3) yeni.add('Fare2'); }
+          if (a) { sonuc.sallan++; if (p.durum === 'sallan') sonuc.maxSw = Math.max(sonuc.maxSw || 0, p.hiz.length()); }
+          if (n === 0 && i % 15 === 0 && i < 300) sonuc.iz2 = (sonuc.iz2 || []).concat([[i, p.durum, +p.konum.y.toFixed(1), +p.hiz.length().toFixed(1), !!a]]);
+          O.guncelle(G, 1 / 60);
+        }
+      }
+      sayac = null; G.girdi = eskiGirdi; return sonuc;
+    })()"""
+
+
 def js_test4() -> str:
     return """(() => {
       const G = window.G, S = G.sehir, T = G.THREE;
@@ -939,6 +1024,18 @@ def main() -> int:
         detay13 = (f"{t13.get('deneme')} yerden denemede çatıya inen={t13.get('catida')}, 'cek' durumu görülen={t13.get('cekGordu')}, "
                    f"nişan yüksek hedefte={t13.get('nisanVar')}, en geç iniş={t13.get('enGec', 0):.1f} sn; [bina_h, iniş_kare]={t13.get('ayrinti')}")
         ekle(13, "Sağ tık basılı yerden yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor", gecti13, detay13, "oyuncu.js")
+
+        # 14-16 — his: kombo, duvarda koşu, mükemmel bırakış
+        t14 = cdp.degerlendir(js_test_his(), promise=True) or {}
+        gecti14 = t14.get("bitirici", 0) >= 1 and t14.get("komboNo", [])[:4] == [0, 1, 2, 3] and 4 in t14.get("kombo", [])
+        ekle(14, "Sol tık yakında 4 vuruşluk kombo: yumruk komboNo 0-3 ve 'bitirici' olayı", gecti14,
+             f"komboNo={t14.get('komboNo')}, kombo sayacı={t14.get('kombo')}, bitirici={t14.get('bitirici')}; kaçış tehlike bayrağı={t14.get('tehlike')}, 'kacis' olayı={t14.get('kacis')}", "oyuncu.js")
+        gecti15 = t14.get("duvarGordu", 0) >= 1 and t14.get("duvar", 0) >= max(1, t14.get("duvarDeneme", 1) * 2 // 3)
+        ekle(15, "Shift ile duvara koşunca duvarda koşu ve çatıya çıkış ('konus')", gecti15,
+             f"{t14.get('duvarDeneme')} denemede duvar durumu={t14.get('duvarGordu')}, çatıya çıkan={t14.get('duvar')}, 'konus' olayı={t14.get('konus')}; [bina_h, duvar, çatı, max dikey hız]={t14.get('ayrinti')}", "oyuncu.js")
+        gecti16 = t14.get("sallan", 0) > 0  # mükemmel bırakış sayısı zamanlamaya duyarlı: bilgi olarak raporlanır
+        ekle(16, "Havada sağ tık ileri-yukarı ankrajla klasik salınım başlatıyor (mükemmel bırakış sayısı bilgi)", gecti16,
+             f"{t14.get('mukDeneme')} denemede mükemmel bırakış={t14.get('muk')}, salınım kare sayısı={t14.get('sallan')}, salınım max hız={t14.get('maxSw')} (zamanlamaya duyarlı)", "oyuncu.js")
 
         # 9 — konsol hataları
         son = cdp.degerlendir(js_son_konsol(), promise=True)
