@@ -308,7 +308,7 @@ export function kur(G) {
     G.sahne.fog = null; G.sahne.background = new THREE.Color(0x0c0818);
     const hm = new THREE.HemisphereLight(0x9a80ff, 0x201030, 0.6); G.sahne.add(hm);
     const gunes = new THREE.DirectionalLight(0xffe8d0, 1.6); gunes.position.set(3, 5, 4); G.sahne.add(gunes);
-    const rim = new THREE.PointLight(0x20f0e0, 40, 12); rim.position.set(-3, 2.5, -2); G.sahne.add(rim);
+    const rim = new THREE.PointLight(0x20f0e0, 18, 12); rim.position.set(-3, 2.5, -2); G.sahne.add(rim);
     sahneEk.push(hm, gunes, rim);
     const zem = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: 0x120a22, roughness: 0.5, metalness: 0.3 }));
     zem.rotation.x = -Math.PI / 2; zem.position.y = -0.002; G.sahne.add(zem);

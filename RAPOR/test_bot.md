@@ -1,10 +1,10 @@
 # ZİFİR Otomatik Test Raporu
 
-- Tarih: 2026-11-05 13:38:47
+- Tarih: 2026-11-05 13:41:43
 - URL: `http://127.0.0.1:8765/?test=1`
 - Ortam: başsız Chrome (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader`)
 - Chrome: `/usr/bin/google-chrome`
-- Süre: 33.4 sn
+- Süre: 35.9 sn
 - Çalıştırma: otomatik yeniden deneme sarmalayıcısı içinde (yalnız altyapı hatasında tekrar)
 - Betik: `test/test_oyun.py` (oyun kodu değiştirilmedi)
 
@@ -14,7 +14,7 @@
    - Ayrıntı: 8/8 modül yüklü
    - İlgili modül: oyun.js + tüm modüller
 2. **GEÇTİ** — 10 sn boyunca konum NaN değil ve y > -5
-   - Ayrıntı: 44 örnek / 10.0 sn; NaN=0; y min=15.89363956451416, max=15.89363956451416; y<=-5 örnek=0
+   - Ayrıntı: 44 örnek / 10.0 sn; NaN=0; y min=16.028158722635716, max=16.028158722635716; y<=-5 örnek=0
    - İlgili modül: oyuncu.js
 3. **GEÇTİ** — Test demosunda sallanma en az bir kez gerçekleşti
    - Ayrıntı: 'sallan' durumu 44/44 örnekte görüldü (100 ms aralık)
@@ -26,13 +26,13 @@
    - Ayrıntı: robot can 40→15, canlı True→True, aktif 2→2
    - İlgili modül: dusman.js
 6. **GEÇTİ** — isinla(küre konumu) görev/küre sayısını artırıyor
-   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); konum={'x': 193.3607911627452, 'y': 62.07876028329899, 'z': 256.8986511230469}
+   - Ayrıntı: küre 0→1, görev ilerlemesi 0→1 (Işık Kürelerini Topla); konum={'x': -35.75800314475428, 'y': 16.57191904839555, 'z': -81.42011260986328}
    - İlgili modül: gorev.js + oyuncu.js.isinla
 7. **GEÇTİ** — hasarAl(1000) sonrası 4 sn içinde can dolu ve konum geçerli
-   - Ayrıntı: 'yenildi' alındı (1 çağrı); 2.4 sn sonra can=100/100, konum={'x': -17.60929794215672, 'y': 64.13556987706765, 'z': -269.6031604472582}, geçerli=True
+   - Ayrıntı: 'yenildi' alındı (1 çağrı); 2.4 sn sonra can=100/100, konum={'x': 134.42933105495734, 'y': 66.06002807617188, 'z': -153.50862365987925}, geçerli=True
    - İlgili modül: oyuncu.js
 8. **GEÇTİ** — Ortalama kare süresi ölçüldü (yalnız bilgi)
-   - Ayrıntı: ortalama 438.87 ms/kare (~2.3 fps), 9 kare / 3950 ms; composer 480x270, çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 15.6 fps (render kapalı).
+   - Ayrıntı: ortalama 547.18 ms/kare (~1.8 fps), 6 kare / 3283 ms; composer 480x270, çizim tamponu 240x135, bloom/gölge kapalı — swiftshader yazılım render, bilgi amaçlı. Mantık testleri: 18.1 fps (render kapalı).
    - İlgili modül: oyun.js render döngüsü
 9. **GEÇTİ** — Konsolda Uncaught / THREE.WebGLProgram / shader hatası yok
    - Ayrıntı: konsolda 'Uncaught' / 'THREE.WebGLProgram' / 'shader' satırı yok

@@ -14,7 +14,7 @@ const canvas = document.getElementById('sahne');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.debug.onShaderError = (gl, program, vs, fs) => {
@@ -29,7 +29,7 @@ kamera.position.set(0, 30, 40);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(sahne, kamera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.5, 0.82);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.45, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 

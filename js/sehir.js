@@ -206,6 +206,7 @@ vSz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(
       .replace('#include <common>', `#include <common>
 flat varying vec3 vFN; varying vec3 vLP; flat varying vec3 vSz; flat varying vec4 vSd;
 uniform sampler2D uCati;
+${GLSL_HASH}
 vec3 trimCol(float i){ return i<1.5 ? vec3(0.1,0.9,1.0) : (i<2.5 ? vec3(1.0,0.2,0.8) : vec3(1.0,0.55,0.12)); }`)
       .replace('#include <map_fragment>', `
 vec3 an = abs(vFN);
@@ -229,10 +230,14 @@ if (ustYuz) {
 }`)
       .replace('#include <emissivemap_fragment>', `
 if (!ustYuz) {
-  totalEmissiveRadiance *= texture2D(emissiveMap, cuv).rgb;
-  float lowGlow = exp(-v / 7.0) * 0.1;
-  totalEmissiveRadiance += trimCol(1.0 + floor(vSd.z * 3.0)) * lowGlow * step(0.5, vSd.x);
-  if (vSd.w > 0.5) {
+  vec3 ew = texture2D(emissiveMap, cuv).rgb;
+  float wl = dot(ew, vec3(0.3, 0.59, 0.11));
+  vec2 wc = floor(cuv * 8.0) + vSd.z * 31.0;
+  float w1 = h21(wc), w2 = h21(wc + 7.7);
+  wl *= step(0.14, w1);
+  vec3 wcol = w2 < 0.14 ? vec3(0.62, 0.78, 1.0) : mix(vec3(1.0, 0.58, 0.2), vec3(1.0, 0.82, 0.5), w2);
+  totalEmissiveRadiance = wcol * wl * 1.15;
+  if (false) {
     float tr = 0.0;
     if (v > H - 0.55) tr = 1.0;
     float edge = min(u, W - u);
@@ -333,8 +338,8 @@ export function kur(G) {
   const sahne = G.sahne;
 
   // atmosfer
-  const sisRenk = new THREE.Color(0x2b1450);
-  const ufukRenk = new THREE.Color(0x4a2070);
+  const sisRenk = new THREE.Color(0x161c2a);
+  const ufukRenk = new THREE.Color(0x2a3040);
   sahne.fog = new THREE.FogExp2(sisRenk, 0.0022);
   sahne.background = sisRenk.clone();
   // gokyuzu.jpg: ay u=0.75,v=0.34 -> yon (0, 0.48, 0.877)
@@ -343,15 +348,15 @@ export function kur(G) {
   const gokTex = _tl.load('assets/gokyuzu.jpg', (t) => {
     const pmrem = new THREE.PMREMGenerator(G.renderer);
     const envTex = pmrem.fromEquirectangular(t).texture; pmrem.dispose();
-    sahne.environment = envTex; sahne.environmentIntensity = 0.25;
+    sahne.environment = envTex; sahne.environmentIntensity = 0.2;
     if (zeminMat) { zeminMat.envMap = envTex; zeminMat.needsUpdate = true; }
   });
   gokTex.colorSpace = THREE.SRGBColorSpace;
   gokTex.mapping = THREE.EquirectangularReflectionMapping; gokTex.wrapS = THREE.RepeatWrapping;
-  sahne.background = gokTex;
+  sahne.background = gokTex; sahne.backgroundIntensity = 0.55; sahne.backgroundBlurriness = 0;
   const catiTex = doku('cati.jpg');
 
-  const hemi = new THREE.HemisphereLight(0x7a66d0, 0x24123a, 1.15);
+  const hemi = new THREE.HemisphereLight(0x6a7a9a, 0x1a2030, 1.1);
   sahne.add(hemi);
   const ay = new THREE.DirectionalLight(0xa8bcff, 1.5);
   ay.castShadow = true;
@@ -366,7 +371,7 @@ export function kur(G) {
     new THREE.SphereGeometry(1800, 32, 20),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { uHor: { value: ufukRenk }, uTop: { value: new THREE.Color(0x070320) }, uAy: { value: ayYon }, uT: { value: 0 } },
+      uniforms: { uHor: { value: ufukRenk }, uTop: { value: new THREE.Color(0x05080f) }, uAy: { value: ayYon }, uT: { value: 0 } },
       vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position.z = gl_Position.w; }',
       fragmentShader: `varying vec3 vD; uniform vec3 uHor, uTop, uAy; uniform float uT;
 ${GLSL_HASH}
@@ -654,7 +659,7 @@ void main(){
 
   const dayMat = new THREE.MeshStandardMaterial({ color: 0x23202e, roughness: 0.5, metalness: 0.6 });
   const direk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.16, LH, 6).translate(0, LH / 2, 0), dayMat, lambalar.length);
-  const basMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.5, 1.5) });
+  const basMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.0, 1.8, 0.7) });
   const bas = new THREE.InstancedMesh(new THREE.BoxGeometry(1.2, 0.18, 0.5), basMat, lambalar.length);
   const havuzMat = new THREE.MeshBasicMaterial({ map: isikDokusu(), color: new THREE.Color(1.0, 0.62, 0.28), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
   const havuz = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), havuzMat, lambalar.length);
@@ -782,9 +787,9 @@ void main(){
   const sinir = yuzler.filter(y => y.h > 9);
   let tabelaSay = 0;
   for (const y of sinir) {
-    if (R() > 0.55) continue;
+    if (R() > 0.18) continue;
     const yatay = y.nx !== 0 ? y.gz : y.gx;
-    const ys = Math.min(y.h - 4, 4 + R() * 22);
+    const ys = Math.min(y.h - 4, 4 + R() * 5);
     const hucre = Math.floor(R() * 8);
     const dikey = R() < 0.25 && y.h > 24 && false;
     const lat = rr(-yatay / 2 + 6, yatay / 2 - 6) * (dikey ? 0 : 1) + (dikey ? (R() < 0.5 ? -1 : 1) * (yatay / 2 - 1.6) : 0);
@@ -797,7 +802,7 @@ void main(){
   }
   // çatı panoları (iki yüzlü)
   const panoAdaylari = cati.filter(b => b.h > 28 && b.gx >= 18 && !b.tier);
-  for (let i = 0; i < 22 && panoAdaylari.length; i++) {
+  for (let i = 0; i < 0 && panoAdaylari.length; i++) {
     const b = panoAdaylari.splice(Math.floor(R() * panoAdaylari.length), 1)[0];
     const hucre = Math.floor(R() * 8);
     const eksenZ = R() < 0.5; const w = Math.min(15, b.gx * 0.7), h = w / 2;
@@ -820,7 +825,7 @@ void main(){
     tg.setAttribute('position', new THREE.Float32BufferAttribute(B.pos, 3));
     tg.setAttribute('uv', new THREE.Float32BufferAttribute(B.uv, 2));
     tg.setIndex(B.idx);
-    const tabelaMat = new THREE.MeshBasicMaterial({ map: doku(`neon_${i + 1}.png`, true, false), color: new THREE.Color(2.1, 2.1, 2.1), transparent: true, alphaTest: 0.02, depthWrite: false, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const tabelaMat = new THREE.MeshBasicMaterial({ map: doku(`neon_${i + 1}.png`, true, false), color: new THREE.Color(1.0, 1.0, 1.0), transparent: true, alphaTest: 0.02, depthWrite: false, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const tabela = new THREE.Mesh(tg, tabelaMat);
     tabela.frustumCulled = false; tabela.renderOrder = 3;
     sahne.add(tabela);

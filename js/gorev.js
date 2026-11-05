@@ -294,8 +294,8 @@ export function kur(G) {
     const is = aktif.isaret;
     if (is) {
       const d = oyuncu().distanceTo(is), r = Math.min(6, Math.max(1, d * 0.012));
-      sutun.visible = true; sutun.position.set(is.x, is.y + 148, is.z); sutun.scale.set(r, 1, r);
-      sutunMat.opacity = 0.22 + 0.1 * Math.sin(G2.t * 3);
+      sutun.visible = true; sutun.position.set(is.x, is.y + 148, is.z); sutun.scale.set(r * 0.45, 1, r * 0.45);
+      sutunMat.opacity = 0.11 + 0.04 * Math.sin(G2.t * 3);
       sutunTaban.visible = true; sutunTaban.position.set(is.x, is.y + 0.3, is.z); sutunTaban.scale.setScalar(r * (1 + 0.15 * Math.sin(G2.t * 4)));
     } else { sutun.visible = false; sutunTaban.visible = false; }
     if (G2.test) { logSayac -= dt; if (logSayac <= 0) { logSayac = 2; console.log('[GOREV] aktif ' + aktif.ad + ' ' + aktif.ilerleme + '/' + aktif.hedef); } }
