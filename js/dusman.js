@@ -1,5 +1,7 @@
 // Düşmanlar — Pas Robotları, Vızvız dronlar, hırsız kamyonet, DEV PAS ROBOT. SOZLESME §4.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -41,6 +43,126 @@ export function kur(G) {
     const m = new THREE.Mesh(geo, mat);
     m.scale.set(sx, sy, sz); m.position.set(x, y, z);
     ebeveyn.add(m); return m;
+  }
+
+  // ---------- CC0 animasyonlu modeller (asenkron; yüklenene dek prosedürel görünüm) ----------
+  const KAYNAK = {
+    robot: { yol: 'assets/3d/RobotExpressive.glb', boy: 2.4, hiza: 'alt', ileri: 0 },
+    dev: { yol: 'assets/3d/mech/George.glb', boy: 3.0, hiza: 'alt', ileri: 0 },
+    dron: { yol: 'assets/3d/cyberpunk/Enemy_Flying.glb', boy: 1.5, hiza: 'orta', ileri: 0 },
+    kamyonet: { yol: 'assets/3d/arac/delivery.glb', boy: 1.4 * 1.45, hiza: 'alt', ileri: Math.PI },
+  };
+  const ANIM = {
+    robot: { dur: 'Idle', yuru: 'Walking', kos: 'Running', sal: 'Punch', hasar: 'No', ol: 'Death' },
+    dev: { dur: 'Idle', yuru: 'Walk', kos: 'Run', sal: 'Punch', hasar: 'HitRecieve_1', ol: 'Death' },
+    dron: { dur: 'Idle', yuru: 'Walk', sal: 'Attack' },
+  };
+  const modeller = {};   // ad -> {sahne, anims, olcek, yOfs}
+  const yukleyici = new GLTFLoader();
+  function modelAdi(e) { return e.tur === 'robot' ? (e.dev ? 'dev' : 'robot') : e.tur; }
+  function boyaMat(ad, m) {
+    const ad2 = (m.name || '').toLowerCase();
+    let n;
+    if (m.isMeshBasicMaterial || m.isMeshStandardMaterial || m.isMeshPhongMaterial || m.isMeshLambertMaterial) {
+      n = new THREE.MeshStandardMaterial({ map: m.map || null, color: m.color ? m.color.clone() : new THREE.Color(0xffffff), roughness: 0.78, metalness: 0.35,
+        transparent: m.transparent, opacity: m.opacity, side: m.side });
+    } else n = m.clone();
+    n.name = m.name; let goz = false;
+    if (ad === 'robot') {                      // Profesör Pas: paslı turuncu / kahve
+      if (ad2 === 'main') n.color.set(0xb4521a);
+      else if (ad2 === 'grey') n.color.set(0x6a4a38);
+      else if (ad2 === 'black') n.color.set(0x1c1410);
+      n.roughness = 0.85; n.metalness = 0.45;
+    } else if (ad === 'dev') {
+      if (n.map) n.color.setRGB(2.4, 1.1, 0.45);   // dokuyu pasa doğru boya
+      n.roughness = 0.85; n.metalness = 0.4;
+    } else if (ad === 'dron') {
+      if (ad2 === 'main' || ad2 === 'material.001') n.color.set(0xa8481a);
+      else if (ad2 === 'main2' || ad2 === 'material.002') n.color.set(0x4a3a30);
+      else if (ad2 === 'material') { goz = true; n.color.set(0xb01408); n.emissive = new THREE.Color(0x601008); n.emissiveIntensity = 1; }
+      n.roughness = 0.7; n.metalness = 0.5;
+    } else if (ad === 'kamyonet') {
+      if (ad2 === 'paintgreen') n.color.set(0xc4561a);
+      else if (ad2 === 'paintwhite') n.color.set(0x7a3512);
+      else if (ad2 === 'lightfront') { n.emissive = new THREE.Color(0xffd890); n.emissiveIntensity = 0.5; }
+      else if (ad2 === 'lightback') { n.emissive = new THREE.Color(0xff3010); n.emissiveIntensity = 0.5; }
+      n.roughness = 0.7; n.metalness = 0.35;
+    }
+    return { n, goz };
+  }
+  function modelTak(e) {
+    const ad = modelAdi(e), k = modeller[ad];
+    if (!k || e.model) return;
+    try {
+      const m = SkeletonUtils.clone(k.sahne);
+      const w = new THREE.Group(), ic = new THREE.Group();
+      m.scale.setScalar(k.olcek); m.position.y = k.yOfs; m.rotation.y = KAYNAK[ad].ileri;
+      ic.add(m); w.add(ic);
+      e.mats = [];
+      m.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = false; o.receiveShadow = false;
+        const kaynakMat = Array.isArray(o.material) ? o.material : [o.material];
+        const yeni = kaynakMat.map(mm => {
+          const r = boyaMat(ad, mm);
+          e.mats.push({ mat: r.n, goz: r.goz, em: r.n.emissive ? r.n.emissive.clone() : new THREE.Color(0), emI: r.n.emissiveIntensity });
+          if (r.goz) e.gozMat = r.n;
+          return r.n;
+        });
+        o.material = Array.isArray(o.material) ? yeni : yeni[0];
+      });
+      if (k.anims.length) {
+        e.mixer = new THREE.AnimationMixer(m); e.act = {}; e.clip = {};
+        for (const [rol, ad3] of Object.entries(ANIM[ad] || {})) {
+          const c = k.anims.find(a => a.name === ad3 || a.name.endsWith('|' + ad3));
+          if (c) { e.act[rol] = e.mixer.clipAction(c); e.clip[rol] = c.duration; }
+        }
+        e.cur = null;
+      }
+      if (e.tur === 'kamyonet') {
+        e.tek = ['wheel_backLeft', 'wheel_backRight', 'wheel_frontLeft', 'wheel_frontRight'].map(n => m.getObjectByName(n)).filter(Boolean);
+      }
+      if (e.dev) {                                // sırttaki parlayan pil (zayıf nokta) — gövde kemiğine bağlı
+        const pil = new THREE.Mesh(gKutu, mPil); pil.scale.set(1.0, 1.4, 0.3);
+        w.add(pil); pil.position.set(0, k.boy * 0.6, -0.95);
+        e.pilBaz = pil.scale.clone();
+        e.pil.visible = false; e.pil = pil; pil.visible = true; e.pil.userData.gercek = true;
+      }
+      e.proc = e.grup.children.slice(); for (const c of e.proc) c.visible = false;
+      e.grup.add(w); e.w = w; e.model = m; e.mdt = 0;
+      if (e.mixer) { e.cur = null; oyna(e, 'dur', false, 1, 0); }
+    } catch (err) { console.warn('[DUSMAN] model takılamadı', ad, err); }
+  }
+  function modelYukle(ad) {
+    const kay = KAYNAK[ad];
+    yukleyici.load(kay.yol, gltf => {
+      try {
+        const s = gltf.scene; s.updateMatrixWorld(true);
+        const kutu = new THREE.Box3().setFromObject(s, true);
+        const yuk = kutu.max.y - kutu.min.y || 1, olcek = kay.boy / yuk;
+        const yOfs = kay.hiza === 'orta' ? -(kutu.max.y + kutu.min.y) / 2 * olcek : -kutu.min.y * olcek;
+        modeller[ad] = { sahne: s, anims: gltf.animations || [], olcek, yOfs };
+        for (const e of liste) if (modelAdi(e) === ad) modelTak(e);
+      } catch (err) { console.warn('[DUSMAN] model işlenemedi', ad, err); }
+    }, undefined, err => console.warn('[DUSMAN] model yüklenemedi (prosedürel kalır)', ad, err));
+  }
+  function oyna(e, rol, tek = false, ts = 1, fade = 0.18) {
+    const a = e.act?.[rol]; if (!a) return;
+    if (!tek && e.cur === a) { a.timeScale = ts; return; }
+    a.reset(); a.timeScale = ts; a.enabled = true;
+    if (tek) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; e.tekT = (e.clip[rol] || 1) / Math.max(0.05, ts); }
+    else { a.setLoop(THREE.LoopRepeat, Infinity); a.clampWhenFinished = false; e.tekT = 0; }
+    if (e.cur && e.cur !== a && fade > 0) { a.fadeIn(fade); e.cur.fadeOut(fade); } else if (e.cur && e.cur !== a) e.cur.stop();
+    a.play(); e.cur = a;
+  }
+  // isabet beyaz parlaması
+  function parlat(e, acik) {
+    if (!e.mats) return;
+    for (const q of e.mats) {
+      if (!q.mat.emissive) continue;
+      if (acik) { q.mat.emissive.setRGB(1, 1, 1); q.mat.emissiveIntensity = 0.9; }
+      else { q.mat.emissive.copy(q.em); q.mat.emissiveIntensity = q.emI; }
+    }
   }
 
   // ---------- parçacık havuzları (InstancedMesh) ----------
@@ -115,7 +237,7 @@ export function kur(G) {
   const toplar = [];
   for (let i = 0; i < 12; i++) {
     const m = new THREE.Group(); m.add(new THREE.Mesh(topGeo, topMat)); m.add(new THREE.Mesh(kuyrukGeo, kuyrukMat)); m.visible = false; sahne.add(m);
-    toplar.push({ m, aktif: false, hiz: V(), omur: 0 });
+    toplar.push({ m, konum: m.position, aktif: false, hiz: V(), omur: 0 });
   }
   function topAt(kaynak, hedef) {
     const t = toplar.find(x => !x.aktif); if (!t) return;
@@ -310,7 +432,8 @@ export function kur(G) {
     else if (tur === 'dron') { m = dronYap(); e.oy = 0; e.yr = 0.9; Object.assign(e, { ic: m.ic, perve: m.perve, goz: m.goz, gozMat: m.gozMat }); e.olcek = 1; }
     else { m = kamyonetYap(); e.oy = 1.2; e.yr = 1.8; Object.assign(e, { ic: m.ic, tek: m.tek }); e.olcek = 1; }
     e.grup = m.g; m.g.visible = false; sahne.add(m.g);
-    liste.push(e); return e;
+    e.id = liste.length; e.flash = 0; e.olumT = 0;
+    liste.push(e); modelTak(e); return e;
   }
   function aktifSay(tur) { let n = 0; for (const e of liste) if (e.canli && (!tur || e.tur === tur) && !e.dev) n++; return n; }
   function toplamAktif() { let n = 0; for (const e of liste) if (e.canli) n++; return n; }
@@ -318,6 +441,8 @@ export function kur(G) {
   function etkinlestir(e, konum) {
     e.konum.copy(konum); e.canli = true; e.grup.visible = true;
     e.sersem = 0; e.cekil = 0; e.vy = 0; e.sal = -1; e.vurus = 0; e.pop = 0; e.itme.set(0, 0, 0); e.bekle = rnd(0.8, 2);
+    e.olumT = 0; e.flash = 0; parlat(e, false); e.hava = false;
+    if (e.mixer) { e.mixer.stopAllAction(); e.cur = null; oyna(e, 'dur', false, 1, 0); }
     if (e.tur === 'robot') { e.canMax = e.dev ? 100 : 40; e.hizMax = e.dev ? 3 : rnd(3.2, 4.2); }
     else if (e.tur === 'dron') { e.canMax = 40; e.hizMax = 8; e.yar = rnd(8, 15); e.dusuyor = false; e.grup.rotation.set(0, 0, 0); }
     else { e.canMax = 75; e.hizMax = 13; }
@@ -325,7 +450,7 @@ export function kur(G) {
     return e;
   }
   function al(tur) {
-    let e = liste.find(x => !x.canli && !x.dusuyor && x.tur === tur && !x.dev);
+    let e = liste.find(x => !x.canli && !x.dusuyor && !(x.olumT > 0) && x.tur === tur && !x.dev);
     return e || olusturVarlik(tur, false);
   }
 
@@ -392,7 +517,11 @@ export function kur(G) {
   function yen(e) {
     e.canli = false;
     if (e.tur === 'dron') { e.dusuyor = true; e.vy = 2; e.dvx = rnd(-2, 2); e.dvz = rnd(-2, 2); e.dron = true; dronYenilenSay++; }
-    else {
+    else if (e.act?.ol) {                       // yenilme animasyonu, sonra cıvata-yay parçalanması
+      e.olumT = e.dev ? 1.9 : 1.0; e.sal = -1;
+      const ts = Math.max(0.4, e.clip.ol / e.olumT); oyna(e, 'ol', true, ts, 0.08);
+      e.w.rotation.z = 0;
+    } else {
       e.grup.visible = false;
       merkez(e, TMP3);
       patlat(TMP3, e.dev ? 3.5 : e.tur === 'kamyonet' ? 2 : 1, e.konum.y);
@@ -402,6 +531,16 @@ export function kur(G) {
   }
   function dusenleriGuncelle(dt) {
     for (const e of liste) {
+      if (e.olumT > 0) {                        // animasyonlu yenilme
+        e.olumT -= dt; e.mixer?.update(dt);
+        if (e.itme.lengthSq() > 0.01) { e.konum.x += e.itme.x * dt; e.konum.z += e.itme.z * dt; e.itme.multiplyScalar(Math.max(0, 1 - 4 * dt)); }
+        const gy = zemin(e.konum.x, e.konum.z);
+        if (e.konum.y > gy + 0.01 || e.vy > 0) { e.vy -= 25 * dt; e.konum.y += e.vy * dt; if (e.konum.y <= gy) { e.konum.y = gy; e.vy = 0; } } else e.konum.y = gy;
+        e.grup.position.copy(e.konum);
+        if (e.flash > 0) { e.flash -= dt; if (e.flash <= 0) parlat(e, false); }
+        if (e.olumT <= 0) { e.grup.visible = false; merkez(e, TMP3); patlat(TMP3, e.dev ? 3.5 : 1, e.konum.y); }
+        continue;
+      }
       if (!e.dusuyor) continue;
       e.vy -= 22 * dt; e.konum.y += e.vy * dt; e.konum.x += e.dvx * dt; e.konum.z += e.dvz * dt;
       e.yaw += 9 * dt; e.grup.rotation.set(0.5 * Math.sin(G.t * 7), e.yaw, 0.9);
@@ -415,9 +554,12 @@ export function kur(G) {
       }
     }
   }
-  function vur(e, miktar, yon) {
+  function vur(e, miktar, yon, itmeK = 6, havaya = false) {
     e.can -= miktar; e.pop = 0.25;
-    if (!e.dev) e.itme.addScaledVector(yon, e.tur === 'kamyonet' ? 0 : 6);
+    if (!e.dev) e.itme.addScaledVector(yon, e.tur === 'kamyonet' ? 0 : itmeK);
+    if (havaya && !e.dev && e.tur === 'robot') { e.vy = 13; e.konum.y += 0.05; e.itme.multiplyScalar(1.3); }
+    if (e.mats) { e.flash = 0.08; parlat(e, true); }
+    if (e.act?.hasar && e.can > 0 && e.sal < 0) oyna(e, 'hasar', true, e.dev ? 1.6 : 2.6, 0.05);
     if (e.tur === 'kamyonet') e.sersem = 1.5;
     kivilcim(merkez(e, TMP3), 0xffd060, 5, 5);
     if (e.can <= 0) yen(e);
@@ -428,7 +570,8 @@ export function kur(G) {
   G.olay.on('yumruk', v => {
     if (!v || !v.konum || !v.yon) return;
     const yon = TMP2.copy(v.yon).normalize().clone();
-    const menz = devAcik ? 6 : 3, dmg = devAcik ? 50 : 25;
+    const menz = devAcik ? 6 : 3, bit = !!v.bitirici, kombo = Math.max(1, v.komboNo | 0 || 1);
+    const dmg = (devAcik ? 50 : 25) * (bit ? 1.5 : 1), itK = 5 + kombo * 1.5 + (bit ? 4 : 0);
     for (const e of liste) {
       if (!e.canli) continue;
       merkez(e, TMP).sub(v.konum);
@@ -446,9 +589,9 @@ export function kur(G) {
       if (e.dev) {
         const ileri = TMP3.set(Math.sin(e.yaw), 0, Math.cos(e.yaw));
         TMP2.copy(v.konum).sub(e.konum).setY(0).normalize();
-        if (ileri.dot(TMP2) < -0.2) { vur(e, devAcik ? 40 : 20, TMP); e.sersem = 1.0; }
+        if (ileri.dot(TMP2) < -0.2) { vur(e, (devAcik ? 40 : 20) * (bit ? 1.5 : 1), TMP); e.sersem = 1.0; }
         else if (G.t - sonUyari > 4) { sonUyari = G.t; msj('Sırtındaki parlayan pili vur! Arkasına geç!', 3); }
-      } else vur(e, dmg, TMP);
+      } else vur(e, dmg, TMP, itK, bit);
     }
   });
   G.olay.on('kamci', v => {
@@ -463,6 +606,31 @@ export function kur(G) {
   });
 
   // ---------- güncelleme ----------
+  const yuruyorMu = (e, d, dev) => d > (dev ? 7 : 2.4);
+  // patron yere vurma: şok dalgası (zıplayarak kaçılır, hasar düşük)
+  const sokHalka = [];
+  const sokGeo = new THREE.RingGeometry(0.93, 1, 48); sokGeo.rotateX(-Math.PI / 2);
+  for (let i = 0; i < 3; i++) {
+    const m = new THREE.Mesh(sokGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff9a3c).multiplyScalar(1.4), transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    m.visible = false; sahne.add(m); sokHalka.push({ m, aktif: false, r: 0, x: 0, y: 0, z: 0, vurdu: false });
+  }
+  function sokDalgasi(e) {
+    const h = sokHalka.find(x => !x.aktif) || sokHalka[0];
+    h.aktif = true; h.r = 1; h.vurdu = false; h.x = e.konum.x + Math.sin(e.yaw) * 4; h.z = e.konum.z + Math.cos(e.yaw) * 4; h.y = e.konum.y;
+    h.m.visible = true;
+    TMP.set(h.x, h.y + 0.3, h.z); kivilcim(TMP, 0xffc070, 14, 7);
+  }
+  function sokGuncelle(dt) {
+    const p = oyuncuKonum();
+    for (const h of sokHalka) {
+      if (!h.aktif) continue;
+      const eski = h.r; h.r += 15 * dt;
+      h.m.position.set(h.x, h.y + 0.15, h.z); h.m.scale.setScalar(h.r); h.m.material.opacity = Math.max(0, 0.85 * (1 - h.r / 18));
+      const dd = Math.hypot(p.x - h.x, p.z - h.z);
+      if (!h.vurdu && dd >= eski - 0.7 && dd <= h.r + 0.7 && p.y - h.y < 1.2) { h.vurdu = true; TMP.set(h.x, h.y, h.z); G.oyuncu?.hasarAl?.(8, TMP); }
+      if (h.r > 18) { h.aktif = false; h.m.visible = false; }
+    }
+  }
   function robotGuncelle(e, dt, p, dx, dz, d) {
     const dev = e.dev;
     if (e.sersem > 0) { e.sersem -= dt; e.sal = -1; }
@@ -471,15 +639,16 @@ export function kur(G) {
       const don = (dev ? 0.7 : 3) * dt, f = aciFark(e.yaw, hy);
       e.yaw += Math.max(-don, Math.min(don, f));
       const dur = dev ? 7 : 2.4;
-      if (d > dur && e.sal < 0) { const h = e.hizMax; e.konum.x += Math.sin(e.yaw) * h * dt; e.konum.z += Math.cos(e.yaw) * h * dt; e.faz += dt * h * 2.6; }
+      let yuruyor = false;
+      if (d > dur && e.sal < 0) { yuruyor = true; const h = e.hizMax; e.konum.x += Math.sin(e.yaw) * h * dt; e.konum.z += Math.cos(e.yaw) * h * dt; e.faz += dt * h * 2.6; }
       e.bekle -= dt;
       const menz = dev ? 9 : 3.2;
-      if (e.sal < 0 && e.bekle <= 0 && d < menz) { e.sal = dev ? 1.1 : 0.55; e.salSure = e.sal; }
+      if (e.sal < 0 && e.bekle <= 0 && d < menz) { e.sal = dev ? 1.1 : 0.55; e.salSure = e.sal; if (e.act?.sal) oyna(e, 'sal', true, Math.max(0.6, (e.clip.sal || 1) / (e.salSure + 0.15)), 0.1); yuruyor = false; }
       if (e.sal >= 0) {
         e.sal -= dt;
         if (e.sal < 0) {
           e.vurus = 0.3; e.bekle = dev ? 3 : 1.8;
-          if (d < menz + 0.8 && Math.abs(p.y - e.konum.y) < 5) G.oyuncu?.hasarAl?.(dev ? 15 : 5, e.konum);
+          if (dev) sokDalgasi(e); else if (d < menz + 0.8 && Math.abs(p.y - e.konum.y) < 5) G.oyuncu?.hasarAl?.(5, e.konum);
           kivilcim(TMP.set(e.konum.x + Math.sin(e.yaw) * 1.2 * e.olcek, e.konum.y + 0.4, e.konum.z + Math.cos(e.yaw) * 1.2 * e.olcek), 0xffc070, dev ? 12 : 4, 4);
         }
       }
@@ -488,6 +657,13 @@ export function kur(G) {
       TMP.set(p.x - e.konum.x, 0, p.z - e.konum.z);
       if (TMP.length() > 2) { TMP.normalize(); e.konum.addScaledVector(TMP, 35 * dt); }
     }
+    // animasyon seçimi (modelli)
+    if (e.mixer && e.sal < 0 && !(e.tekT > 0)) {
+      if (e.sersem > 0 || e.cekil > 0) oyna(e, 'dur', false, 1, 0.12);
+      else if (yuruyorMu(e, d, dev)) oyna(e, e.hizMax > 3.9 && !dev ? 'kos' : 'yuru', false, dev ? 0.8 : (e.hizMax > 3.9 ? 1.0 : 1.25), 0.2);
+      else oyna(e, 'dur', false, 1, 0.2);
+    }
+    if (e.w) e.w.rotation.z = e.sersem > 0 ? Math.sin(G.t * 25) * 0.08 : 0;
     // yalpalama + kol/bacak
     const fz = Math.sin(e.faz);
     e.bac[0].rotation.x = fz * 0.6; e.bac[1].rotation.x = -fz * 0.6;
@@ -499,7 +675,7 @@ export function kur(G) {
     else ka = null;
     if (ka !== null) { e.kol[0].rotation.x = ka; e.kol[1].rotation.x = ka; }
     else { e.kol[0].rotation.x = -fz * 0.5; e.kol[1].rotation.x = fz * 0.5; }
-    if (e.pil.visible) e.pil.scale.set(0.5, 0.7 * (1 + 0.12 * Math.sin(G.t * 6)), 0.15);
+    if (e.pil.visible) { const b = e.pilBaz || { x: 0.5, y: 0.7, z: 0.15 }; e.pil.scale.set(b.x, b.y * (1 + 0.12 * Math.sin(G.t * 6)), b.z); }
   }
 
   function dronGuncelle(e, dt, p) {
@@ -521,16 +697,19 @@ export function kur(G) {
       const d3 = e.konum.distanceTo(p);
       let par = 1;
       if (e.bekle < 2.5 && d3 < 60) par = 1 + 0.6 * (Math.sin(G.t * (8 + (2.5 - e.bekle) * 6)) > 0 ? 1 : 0.2);
-      e.goz.scale.setScalar(0.07 * par); e.gozMat.color.setRGB(2 * par * 0.7, 0.12, 0.08);
+      e.goz.scale.setScalar(0.07 * par);
+      if (e.model) { e.gozMat.color.setRGB(0.7 * par, 0.04, 0.03); if (e.flash <= 0) e.gozMat.emissive.setRGB(0.5 * par * par, 0.03, 0.02); }
+      else e.gozMat.color.setRGB(2 * par * 0.7, 0.12, 0.08);
       if (e.bekle <= 0) {
         e.bekle = rnd(4.5, 6.5);
-        if (d3 < 60) topAt(TMP.set(e.konum.x, e.konum.y - 0.3, e.konum.z), TMP2.copy(p).setY(p.y + 1));
+        if (d3 < 60) { topAt(TMP.set(e.konum.x, e.konum.y - 0.3, e.konum.z), TMP2.copy(p).setY(p.y + 1)); if (e.act?.sal) oyna(e, 'sal', true, 1.6, 0.1); }
       }
     }
     e.faz += dt * 40;
     for (let i = 0; i < 4; i++) e.perve[i].rotation.y = e.faz * (i & 1 ? 1 : -1);
     e.ic.rotation.z = Math.sin(G.t * 2 + e.ang) * 0.08 + (e.sersem > 0 ? Math.sin(G.t * 30) * 0.2 : 0);
     e.ic.rotation.x = Math.sin(G.t * 1.7 + e.faz) * 0.06; e.ic.position.y = Math.sin(G.t * 2.4 + e.ang) * 0.12;
+    if (e.w) { e.w.rotation.x = e.ic.rotation.x; e.w.rotation.z = e.ic.rotation.z; e.w.position.y = e.ic.position.y; if (e.mixer && !(e.tekT > 0)) oyna(e, 'dur', false, 1.4, 0.2); }
     if (G.sehir?.carpis) {
       const r = G.sehir.carpis(e.konum, 1.0);
       if (r?.duzeltme) e.konum.add(r.duzeltme);
@@ -575,13 +754,24 @@ export function kur(G) {
     let sy = e.olcek, sxz = e.olcek;
     if (e.pop > 0) { e.pop -= dt; const k = Math.max(0, e.pop) * 4; sy *= 1 - 0.25 * k; sxz *= 1 + 0.15 * k; }
     g.scale.set(sxz, sy, sxz);
+    // animasyon güncelleme: uzaktakiler seyrek
+    if (e.mixer) {
+      e.mdt += dt; if (e.tekT > 0) e.tekT -= dt;
+      const sk = d > 80 ? 4 : d > 45 ? 2 : 1;
+      if (((kare + e.id) % sk) === 0) { e.mixer.update(e.mdt); e.mdt = 0; }
+    }
+    if (e.flash > 0) { e.flash -= dt; if (e.flash <= 0) parlat(e, false); }
     // çok uzaktakini geri dönüştür (patron ve kamyonet hariç)
     if (!e.dev && e.tur !== 'kamyonet' && d > (e.tur === 'dron' ? 90 : 130)) { e.canli = false; g.visible = false; }
   }
 
+  let kare = 0;
   let dogmaSayac = 0, logSayac = 0, testSayac = 0, testKuruldu = false;
   G.dusman = {
     liste,
+    modeller,
+    mermiler: toplar,                 // düşman mermileri [{konum, hiz, aktif}] (kaçış için)
+    oyuncuMermileri: mermiler,
     robotHedef: 4, dronHedef: 3, dogmaCarpani: 1,
     enYakin(konum, r = Infinity) {
       let en = null, enD = r;
@@ -616,12 +806,20 @@ export function kur(G) {
     }
     for (let i = 0; i < 2; i++) { const e = dogur('dron', [15, 25]); e.vitrin = true; const p = oyuncuKonum(); e.konum.y = Math.max(e.konum.y, p.y + 5); }
     const k = G.dusman.olustur('kamyonet', V(30, 0, 30)); k.vitrin = true;
+    if (new URLSearchParams(location.search).has('modelfoto')) { // geçici: robot/dron/patron/kamyonet yakın görüntü
+      const q = new URLSearchParams(location.search).get('modelfoto');
+      const r = dogur('robot', [6, 6]); r.vitrin = true; const d = dogur('dron', [6, 6]); d.vitrin = true; d.yar = 5;
+      const dv = G.dusman.dev(V(0, 0, 0)); const kam = G.dusman.olustur('kamyonet', V(0, 0, 0)); kam.vitrin = true;
+      G.dusman.foto = { r, d, dv, kam, q };
+    }
     if (new URLSearchParams(location.search).has('dronfoto')) { // geçici: yakın görüntü
       const e = dogur('dron', [6, 6]); e.vitrin = true; e.yar = 5; G.dusman.dronFoto = e;
     }
   }
 
   G.olay.on('robotYenildi', v => { if (G.test && v.tur !== 'kamyonet') console.log('[DUSMAN] robot yenildi:', v.tur); });
+
+  for (const ad of Object.keys(KAYNAK)) modelYukle(ad);
 
   if (!G.sehir) sahne.add(new THREE.HemisphereLight(0xb0a0ff, 0x402010, 1.6)); // şehir yoksa yedek ışık
 
@@ -639,10 +837,27 @@ export function kur(G) {
         else if (aktifSay('robot') < G.dusman.robotHedef) dogur('robot');
       }
     }
+    kare++;
     for (const e of liste) if (e.canli) varlikGuncelle(e, dt);
+    sokGuncelle(dt);
     toplariGuncelle(dt, oyuncuKonum());
     havuzGuncelle(hCivata, dt); havuzGuncelle(hYay, dt); havuzGuncelle(hKivilcim, dt); havuzGuncelle(hJole, dt);
     mermileriGuncelle(dt); dusenleriGuncelle(dt);
+    if (G.dusman.foto) {
+      const F = G.dusman.foto, k = G2.kamera; k.getWorldDirection(TMP2); TMP2.y = 0; TMP2.normalize();
+      const yan = TMP3.set(-TMP2.z, 0, TMP2.x), yaw = Math.atan2(-TMP2.x, -TMP2.z), p0 = k.position;
+      const yerle = (e, ileri, sag, yuk, y2) => { e.canli = true; e.grup.visible = true; e.can = 999; e.konum.set(p0.x + TMP2.x * ileri + yan.x * sag, y2 ?? (p0.y - 1.6 + (yuk || 0) + 6), p0.z + TMP2.z * ileri + yan.z * sag); e.grup.position.copy(e.konum); e.yaw = yaw + (e.tur === 'kamyonet' ? 0.6 : 0); e.grup.rotation.y = e.yaw; e.sersem = 0; };
+      const q = F.q;
+      if (G.kahraman?.grup) G.kahraman.grup.visible = false;
+      if (!F.isik) { F.isik = new THREE.PointLight(0xfff0e0, 14, 40, 1.5); sahne.add(F.isik); }
+      F.isik.position.set(p0.x + TMP2.x * 1.5 + yan.x * 2, p0.y + 2, p0.z + TMP2.z * 1.5 + yan.z * 2);
+      if (q === 'p' || q === 'pa') { F.isik.intensity = 60; F.isik.distance = 120; F.isik.position.set(p0.x + TMP2.x * 12, p0.y + 8, p0.z + TMP2.z * 12); }
+      if (q === '1' || q === 'r') { yerle(F.r, 4.5, 0, 0, p0.y - 2.2); F.d.canli = false; F.d.grup.visible = false; F.dv.canli = false; F.dv.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
+      else if (q === 'd') { yerle(F.d, 4, 0, 0, p0.y - 0.3); F.r.canli = false; F.r.grup.visible = false; F.dv.canli = false; F.dv.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
+      else if (q === 'p') { yerle(F.dv, 18, 0, 0, p0.y - 2.3); F.r.canli = false; F.r.grup.visible = false; F.d.canli = false; F.d.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
+      else if (q === 'pa') { yerle(F.dv, 18, 0, 0, p0.y - 2.3); F.dv.yaw = yaw + Math.PI; F.dv.grup.rotation.y = F.dv.yaw; F.r.canli = false; F.r.grup.visible = false; F.d.canli = false; F.d.grup.visible = false; F.kam.canli = false; F.kam.grup.visible = false; }
+      else if (q === 'k') { yerle(F.kam, 10, 0); F.r.canli = false; F.r.grup.visible = false; F.d.canli = false; F.d.grup.visible = false; F.dv.canli = false; F.dv.grup.visible = false; }
+    }
     if (G.dusman.dronFoto) { const f = G.dusman.dronFoto, k = G2.kamera; f.canli = true; f.grup.visible = true; k.getWorldDirection(TMP); f.konum.copy(k.position).addScaledVector(TMP, 3.2); f.konum.y -= 0.5; f.grup.position.copy(f.konum); f.can = 999; f.yaw = Math.atan2(TMP.x, TMP.z); f.grup.rotation.y = f.yaw + 2.6; f.grup.rotation.x = 0.35; }
 
     if (G2.test) {
