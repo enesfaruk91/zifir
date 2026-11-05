@@ -176,3 +176,24 @@ G.arayuz = { mesaj(metin, sure), }
 - Her ajan bitirince başsız testle `HATA 0` doğrular, bir ekran görüntüsü alır, raporunu
   `RAPOR/<modul>.md`ye (ne yapıldı / ne doğrulanmadı / sözleşme istekleri) yazar.
 - Yedek/kopya dosya bırakma (`*.bak`, `*_eski.js` yok). Geçici dosyalar /tmp'de.
+
+## 6. PRO SÜRÜM (05.11, kullanıcı: "Steam oynayan çocuk beğensin, profesyonel his")
+Hedef: büyük bütçeli şehir-sallanma oyunlarının HİSSİ (tür), ama tamamen özgün içerik (§1 yasakları geçerli).
+Ekran kartı AMD RX 550: her ağır efekt G.kalite'ye bağlı ('dusuk' kapalı).
+
+### 6.1 Hazır varlıklar (assets/3d, assets/ses) — yalnız CC0 / açık lisans, `assets/LISANS.md`'de kaynak+lisans.
+GLB/glTF yükleme: `three/addons/loaders/GLTFLoader.js`; animasyon: AnimationMixer.
+
+### 6.2 G.efekt (sahip: oyun.js) — her modül kullanabilir
+```js
+G.efekt = {
+  sars(siddet 0..1, sure),            // kamera sarsıntısı (oyuncu.js kamerayı kurduktan SONRA, render öncesi uygulanır)
+  yavasCekim(oran 0.2..1, sure),      // G.zamanOlcek; oyun.js dt'yi ölçekler (arayuz/ses gerçek dt kullanır: G.gercekDt)
+  vurusDuraklat(sure ~0.05),          // hit-stop: kısa donma
+  hizBulanikligi(0..1),               // her kare oyuncu.js hız oranını verir; radyal bulanıklık + kenar hız çizgileri
+  flas(renk, sure)                    // ekran kısa renk parlaması (hasar/Dev)
+}
+```
+### 6.3 Olaylar (ek)
+'kombo' {sayi}, 'bitirici' {konum}, 'kacis' (zamanında kaçınma), 'mukemmelBirakis' (salınımın tepe noktasında bırakma),
+'cek' (yukarı ağ çekişi başladı), 'konus' (çatıya konuş).

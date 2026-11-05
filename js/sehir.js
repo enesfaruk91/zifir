@@ -29,7 +29,7 @@ const rr = (a, b) => a + (b - a) * R();
 const sec = (dizi) => dizi[Math.floor(R() * dizi.length)];
 
 // ---------- çarpışma ızgarası ----------
-const CS = 32, G0 = -512, GN = 32;
+const CS = 32, G0 = -1280, GN = 80; // 2560 m: uzak silüet halkası da çarpışır
 const C = [];          // düz: minx,miny,minz,maxx,maxy,maxz
 const CT = [];         // 0 bina, 1 ince (lamba; yalnız ankraj), 2 havadaki (kiriş; zeminY'ye girmez)
 let CB = null, CTT = null, hucre = null, damga = null, damgaNo = 0;
@@ -533,12 +533,14 @@ void main(){
     }
   }
 
-  // uzak silüet halkası (çarpışma yok)
+  // uzak silüet halkası (artık çarpışır)
   const uzak = [];
   for (let i = 0; i < 300; i++) {
     const a = R() * Math.PI * 2, rd = rr(470, 1150);
     const h = rr(40, 230) * (0.7 + rd / 1500);
-    uzak.push({ x: Math.cos(a) * rd, z: Math.sin(a) * rd, gx: rr(26, 70), gz: rr(26, 70), h, renk: duvarRengi(1.1), olas: rr(0.1, 0.35), trim: R() < 0.2 ? 1 + Math.floor(R() * 3) : 0, tohum: R() });
+    const u = { x: Math.cos(a) * rd, z: Math.sin(a) * rd, gx: rr(26, 70), gz: rr(26, 70), h, renk: duvarRengi(1.1), olas: rr(0.1, 0.35), trim: R() < 0.2 ? 1 + Math.floor(R() * 3) : 0, tohum: R() };
+    uzak.push(u);
+    colEkle(u.x, 0, u.z, u.gx, u.h, u.gz, 0); // uzak binalar da katı
   }
 
   izgaraKurSonra();

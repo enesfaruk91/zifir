@@ -20,7 +20,7 @@ export function kur(G) {
   const s = {
     T, v, sanal, yaw: 0, pitch: 8 * RAD, roll: 0,
     ileri: v(0, 0, -1), sag: v(1, 0, 0), bakis: v(), istek: v(),
-    ankraj: null, halat: 0, tekrar: 0, duvar: null, duvarBekle: 0,
+    ankraj: null, cek: null, cekHiz: 0, fareKilit: false, halat: 0, tekrar: 0, duvar: null, duvarBekle: 0,
     zip: null, zipBekle: 0, ziplamalar: 1, ziplamaTampon: 0, sonZemin: 0,
     devSure: 0, hasarSure: 0, dogusSure: 0, olmeSure: 0,
     saldiriSure: 0, saldiri: null, yumrukBekle: 0, atisBekle: 0, atisSayi: 0, atisEl: 0, kamciBekle: 0,
@@ -31,6 +31,9 @@ export function kur(G) {
   const p = G.oyuncu = {
     konum: v(), hiz: v(), yerde: false, durum: 'dus', can: 100, canMax: 100,
     guc: 0, gucMax: 100, dev: false, nisanVar: false, nisanNokta: null, nisanHedef: null,
+    get yaw() { return s.yaw; }, set yaw(d) { if (Number.isFinite(d)) s.yaw = d; },
+    get pitch() { return s.pitch; }, set pitch(d) { if (Number.isFinite(d)) s.pitch = d; },
+    get ankraj() { return s.ankraj; },
     hasarAl(miktar, kaynakKonum) {
       if (G.durum !== 'oyun' || s.olmeSure > 0 || s.hasarSure > 0 || !Number.isFinite(miktar) || miktar <= 0) return;
       const hasar = miktar * (p.dev ? 0.5 : 1);
@@ -140,6 +143,7 @@ function sallanBasla(G, s, hedef) {
   olay(G, 'sallanBasla');
 }
 function sallanBit(G, s, firlat) {
+  s.cek = null;
   if (!s.ankraj) return;
   s.ankraj = null;
   if (firlat) G.oyuncu.hiz.y += 4;
@@ -199,6 +203,98 @@ function zipIlerle(G, s, aday) {
   p.konum.addScaledVector(yol, izin);
   return izin < mesafe - 0.0001;
 }
+// Zifir dikey kapsül: ayak, bel, baş küreleri. Konum ayak tabanıdır (dev: x1.6).
+function kapsulOlcu(p) { const sc = p.dev ? 1.6 : 1, r = 0.45 * sc, h = 1.9 * sc; return { r, h, ofs: [r, h / 2, h - r] }; }
+// Kapsülü şehir collider'larından çıkarır; yatay duvar normallerini toplayıp döndürür.
+const _kn = { x: 0, z: 0, yukari: false, asagi: false, vurdu: false };
+function kapsulDuzelt(G, s) {
+  _kn.x = 0; _kn.z = 0; _kn.yukari = false; _kn.asagi = false; _kn.vurdu = false;
+  const sh = G.sehir; if (!sh?.carpis) return _kn;
+  const p = G.oyuncu, { r, ofs } = kapsulOlcu(p), m = s.m1 || (s.m1 = s.v());
+  for (let tur = 0; tur < 3; tur++) {
+    let degisti = false;
+    for (const o of ofs) {
+      m.copy(p.konum); m.y += o;
+      const hit = sh.carpis(m, r);
+      if (!hit || !hit.normal || !sonlu(hit.duzeltme) || hit.duzeltme.lengthSq() < 1e-10) continue;
+      p.konum.add(hit.duzeltme); degisti = true; _kn.vurdu = true;
+      const n = hit.normal;
+      if (Math.abs(n.y) < 0.7) { _kn.x += n.x; _kn.z += n.z; }
+      else if (n.y >= 0.7) _kn.yukari = true; else _kn.asagi = true;
+    }
+    if (!degisti) break;
+  }
+  return _kn;
+}
+// ---- Yüksek ağ hedefi: bakılan binanın çatı kenarı, yoksa ±40° konide en uygun yüksek kenar ----
+function yuksekHedefBul(G, s) {
+  const p = G.oyuncu, bas = p.konum.clone().add(s.v(0, 1.3, 0));
+  const cp = Math.cos(s.pitch);
+  const bx = -Math.sin(s.yaw) * cp, by = Math.sin(s.pitch), bz = -Math.cos(s.yaw) * cp;
+  const minY = p.konum.y + 10, MAXD = 95;
+  const bak = s.v(bx, by, bz);
+  // 1) doğrudan bakılan duvarın çatı kenarı
+  const h = isin(G, s, bas, bak, MAXD);
+  if (h && Math.abs(h.normal.y) < 0.5) {
+    const yb = yakinBina(G, s, h.nokta, 0.5);
+    if (yb && yb.k.max.y >= minY) {
+      const k = yb.k, nokta = s.v(sinirla(h.nokta.x, k.min.x, k.max.x), k.max.y, sinirla(h.nokta.z, k.min.z, k.max.z));
+      return { nokta, normal: s.v(0, 1, 0), k, ust: k.max.y };
+    }
+  }
+  // 2) koni araması
+  const cos = Math.cos(40 * RAD), adaylar = [];
+  for (const b of binalar(G, s)) {
+    const k = kutu(b, s); if (!k || k.max.y < minY) continue;
+    const dx = Math.max(k.min.x - bas.x, 0, bas.x - k.max.x), dz = Math.max(k.min.z - bas.z, 0, bas.z - k.max.z);
+    if (dx * dx + dz * dz > MAXD * MAXD) continue;
+    const y = k.max.y, cx = sinirla(bas.x, k.min.x, k.max.x), cz = sinirla(bas.z, k.min.z, k.max.z);
+    const mx = (k.min.x + k.max.x) / 2, mz = (k.min.z + k.max.z) / 2;
+    const pts = [[k.min.x, k.min.z], [k.max.x, k.min.z], [k.min.x, k.max.z], [k.max.x, k.max.z],
+      [mx, k.min.z], [mx, k.max.z], [k.min.x, mz], [k.max.x, mz], [cx, k.min.z], [cx, k.max.z], [k.min.x, cz], [k.max.x, cz]];
+    for (const [x, z] of pts) {
+      const fx = x - bas.x, fy = y - bas.y, fz = z - bas.z, d = Math.hypot(fx, fy, fz);
+      if (d < 6 || d > MAXD) continue;
+      const c = (fx * bx + fy * by + fz * bz) / d; if (c < cos) continue;
+      adaylar.push({ skor: Math.acos(Math.min(1, c)) / RAD + d * 0.12, x, y, z, d, k });
+    }
+  }
+  adaylar.sort((a, b) => a.skor - b.skor);
+  for (let i = 0; i < Math.min(8, adaylar.length); i++) {
+    const a = adaylar[i], yon = s.v(a.x - bas.x, a.y - bas.y, a.z - bas.z).divideScalar(a.d);
+    const e = isin(G, s, bas, yon, a.d);
+    if (e && bas.distanceTo(e.nokta) < a.d - 2.5) continue;
+    return { nokta: s.v(a.x, a.y, a.z), normal: s.v(0, 1, 0), k: a.k, ust: a.k.max.y };
+  }
+  return null;
+}
+function cekBasla(G, s, hedef) {
+  const p = G.oyuncu;
+  s.ankraj = hedef.nokta.clone();
+  s.halat = sinirla(p.konum.distanceTo(s.ankraj), 3, 100);
+  s.duvar = null; s.sallanma++;
+  s.cek = { ust: hedef.ust, k: hedef.k, sure: 0, nokta: hedef.nokta.clone() };
+  const ip = p.konum.clone().sub(s.ankraj).normalize();
+  s.cekHiz = Math.max(4, -p.hiz.dot(ip));
+  if (p.yerde) { p.hiz.y = Math.max(p.hiz.y, 6); p.yerde = false; }
+  olay(G, 'sallanBasla');
+}
+// Çekiş sonu: çatı seviyesine yakınsa çatıya kondur, değilse momentumla fırla.
+function cekBitir(G, s, kondur) {
+  const p = G.oyuncu, c = s.cek;
+  const nokta = c.nokta, k = c.k;
+  sallanBit(G, s, false);
+  if (kondur && k && p.konum.y + 4.5 >= c.ust) {
+    const son = nokta.clone();
+    const ix = (k.min.x + k.max.x) / 2 - nokta.x, iz = (k.min.z + k.max.z) / 2 - nokta.z, il = Math.hypot(ix, iz) || 1;
+    son.x += ix / il * 1.8; son.z += iz / il * 1.8;
+    son.x = sinirla(son.x, k.min.x + 1, k.max.x - 1); son.z = sinirla(son.z, k.min.z + 1, k.max.z - 1);
+    son.y = k.max.y + 0.05;
+    s.zip = { bas: p.konum.clone(), son, sure: 0, once: p.konum.clone(), cati: true, firlat: true, yuksel: true };
+    s.zipBekle = 0.3; s.fareKilit = true; p.yerde = false; s.tekrar = 0.3;
+    olay(G, 'zip');
+  } else { p.hiz.y += 4; s.fareKilit = true; }
+}
 function zemin(G, s, pos, onceY) {
   let y = 0;
   const ust = G.sehir?.zeminY?.(pos.x, pos.z);
@@ -220,16 +316,19 @@ function carpis(G, s, once, dt, duvarIzin = true) {
   }
   let n = null;
   if (G.sehir?.carpis) {
-    const merkez = p.konum.clone().add(s.v(0, 0.95, 0));
-    const hit = G.sehir.carpis(merkez, r);
-    if (hit && sonlu(hit.duzeltme)) {
-      p.konum.add(hit.duzeltme);
-      if (sonlu(hit.normal)) {
-        if (Math.abs(hit.normal.y) < 0.5) n = hit.normal.clone().normalize();
-        else if (hit.normal.y > 0.5 && p.hiz.y < 0) p.hiz.y = 0;
-        else if (hit.normal.y < -0.5 && p.hiz.y > 0) p.hiz.y = 0;
-      }
+    // Süpürme: önceki konumdan yeni konuma <=0.3 m adımlarla kapsül çarpışması (tünelleme yok).
+    const bitis = p.konum.clone(), yol = bitis.clone().sub(once), uz = yol.length();
+    const say = sinirla(Math.ceil(uz / 0.3), 1, 80);
+    p.konum.copy(once); yol.divideScalar(say);
+    let nx = 0, nz = 0, yukari = false, asagi = false;
+    for (let i = 0; i < say; i++) {
+      p.konum.add(yol);
+      const kn = kapsulDuzelt(G, s);
+      nx += kn.x; nz += kn.z; yukari ||= kn.yukari; asagi ||= kn.asagi;
     }
+    if (yukari && p.hiz.y < 0) p.hiz.y = 0;
+    if (asagi && p.hiz.y > 0) p.hiz.y = 0;
+    if (nx * nx + nz * nz > 1e-6) n = s.v(nx, 0, nz).normalize();
   } else {
     for (const b of binalar(G, s)) {
       const k = kutu(b, s); if (!k || p.konum.y >= k.max.y - 0.01 || p.konum.y + 1.8 <= k.min.y) continue;
@@ -250,7 +349,7 @@ function carpis(G, s, once, dt, duvarIzin = true) {
     const iceri = p.hiz.dot(n);
     if (iceri < 0) p.hiz.addScaledVector(n, -iceri);
     const kos = G.girdi?.basili?.('ShiftLeft') || G.girdi?.basili?.('ShiftRight');
-    if (duvarIzin && s.duvarBekle <= 0 && (kos || (!p.yerde && havaHizi > 8))) {
+    if (duvarIzin && !s.cek && s.duvarBekle <= 0 && (kos || (!p.yerde && havaHizi > 8))) {
       sallanBit(G, s, false);
       s.duvar = { normal: n, bina: yakinBina(G, s, p.konum) };
       s.tekrar = 0.2;
@@ -272,6 +371,7 @@ function duvarHareket(G, s, dt, x, y, ziplama) {
   p.hiz.copy(yan).multiplyScalar(x * 5 * (p.dev ? 1.3 : 1));
   p.hiz.y = y * 6 * (p.dev ? 1.3 : 1);
   p.konum.addScaledVector(p.hiz, dt);
+  kapsulDuzelt(G, s);
   const bina = d.bina || yakinBina(G, s, p.konum);
   if (bina) {
     const k = bina.k;
@@ -317,15 +417,24 @@ function fizik(G, s, dt) {
     const itki = s.ileri.clone().multiplyScalar(alt * 10 * carp).addScaledVector(s.istek, 11 * carp);
     itki.addScaledVector(ip, -itki.dot(ip));
     p.hiz.addScaledVector(itki, dt);
-    const z = zemin(G, s, p.konum, p.konum.y);
-    if (p.konum.y - z < 2) s.halat = Math.max(15, s.halat - 9 * dt);
+    if (s.cek) {
+      // Makara: halat kısalır, radyal hız ~25 m/s'ye kadar ivmelenir; yan (sarkaç) hız korunur.
+      s.cek.sure += dt;
+      s.cekHiz = Math.min(25, s.cekHiz + 30 * dt);
+      const radyal = p.hiz.dot(ip), istenen = -s.cekHiz;
+      if (radyal > istenen) p.hiz.addScaledVector(ip, Math.max(istenen - radyal, -70 * dt));
+      s.halat = Math.max(1.5, Math.min(s.halat, p.konum.distanceTo(s.ankraj)) - s.cekHiz * dt);
+    } else {
+      const z = zemin(G, s, p.konum, p.konum.y);
+      if (p.konum.y - z < 2) s.halat = Math.max(15, s.halat - 9 * dt);
+    }
   } else {
     p.hiz.addScaledVector(s.istek, 13 * carp * dt);
     const yatay = Math.hypot(p.hiz.x, p.hiz.z);
     // Hava kontrolü ivme verir, sallanmadan gelen momentumu kesmez.
     if (yatay > 42 * carp) { const oran = (yatay - (yatay - 42 * carp) * yumusak(2, dt)) / yatay; p.hiz.x *= oran; p.hiz.z *= oran; }
   }
-  p.hiz.y -= 25 * dt;
+  p.hiz.y -= 25 * dt * (s.cek ? 0.35 : 1);
   const once = p.konum.clone();
   p.konum.addScaledVector(p.hiz, dt);
   if (s.ankraj) {
@@ -359,6 +468,14 @@ function kamera(G, s, dt) {
     const engel = isin(G, s, s.kameraHedef, sonYol, sonUzaklik + 0.2);
     if (engel) s.kameraKonum.copy(s.kameraHedef).addScaledVector(sonYol, Math.max(0.15, s.kameraHedef.distanceTo(engel.nokta) - 0.35));
   }
+  // Kamera küresi (r=0.35) bina içine girmesin.
+  if (G.sehir?.carpis) {
+    for (let i = 0; i < 2; i++) {
+      const kh = G.sehir.carpis(s.kameraKonum, 0.35);
+      if (!kh || !kh.normal || !sonlu(kh.duzeltme) || kh.duzeltme.lengthSq() < 1e-10) break;
+      s.kameraKonum.add(kh.duzeltme);
+    }
+  }
   s.kameraKonum.y = Math.max(0.25, s.kameraKonum.y);
   c.position.copy(s.kameraKonum);
   c.up.set(0, 1, 0);
@@ -381,7 +498,7 @@ function kahraman(G, s, dt) {
     k.grup.quaternion.slerp(s.q, yumusak(12, dt || 1));
     k.grup.updateMatrixWorld?.(true);
   }
-  k.ayarla?.({ durum: p.durum, hiz: p.hiz, yerde: p.yerde, dev: p.dev, dt });
+  k.ayarla?.({ durum: p.durum === 'cek' ? 'sallan' : p.durum, hiz: p.hiz, yerde: p.yerde, dev: p.dev, dt });
   if (s.ankraj) k.dokunac?.('sag', k.elNoktasi?.('sag') || p.konum.clone().add(s.v(0, 1.4, 0)), s.ankraj);
   else k.dokunac?.('sag', null, null);
   if (s.kamciSure > 0 && s.kamciHedef) {
@@ -419,6 +536,7 @@ export function guncelle(G, dt) {
   s.pitch = sinirla(s.pitch - (g?.fareDY || 0) * 0.0021, -60 * RAD, 75 * RAD);
   s.ileri.set(-Math.sin(s.yaw), 0, -Math.cos(s.yaw)); s.sag.set(Math.cos(s.yaw), 0, -Math.sin(s.yaw));
   const hedef = ankrajBul(G, s);
+  const yh = (s.cek || s.zip || s.olmeSure > 0) ? null : yuksekHedefBul(G, s);
   p.nisanVar = false; p.nisanNokta = null; p.nisanHedef = null;
   if (s.olmeSure > 0) {
     s.olmeSure = Math.max(0, s.olmeSure - dt);
@@ -465,8 +583,10 @@ export function guncelle(G, dt) {
   if (yeni('Space')) s.ziplamaTampon = 0.12;
   if (!basili('Fare2')) sallanBit(G, s, true);
   if (yeni('KeyE') && hedef && !s.zipBekle) zipBasla(G, s, hedef);
-  if (basili('Fare2') && !s.ankraj && !s.zip && !s.tekrar) {
-    if (hedef) sallanBasla(G, s, hedef);
+  if (!basili('Fare2')) s.fareKilit = false;
+  if (basili('Fare2') && !s.ankraj && !s.zip && !s.tekrar && !s.fareKilit) {
+    if (yh) cekBasla(G, s, yh);
+    else if (hedef) sallanBasla(G, s, hedef);
     s.tekrar = 0.1;
   }
   if (s.zip) {
@@ -482,9 +602,11 @@ export function guncelle(G, dt) {
       aday.y = z.bas.y + (z.son.y - z.bas.y) * Math.min(1, e / 0.55);
     }
     const engel = zipIlerle(G, s, aday);
+    kapsulDuzelt(G, s);
     p.hiz.copy(p.konum).sub(z.once).divideScalar(dt);
     if (engel || t >= 1) {
       if (engel) p.hiz.set(0, 2, 0);
+      else if (z.firlat) { p.hiz.copy(s.ileri).multiplyScalar(4); p.hiz.y = 4; }
       else { p.hiz.copy(s.ileri).multiplyScalar(z.cati ? 2 : 5); p.hiz.y = z.cati ? 2 : 4; }
       s.zip = null; s.ziplamalar = 1; s.duvarBekle = 0.15;
     }
@@ -492,10 +614,15 @@ export function guncelle(G, dt) {
     const adim = Math.ceil(dt / (1 / 120));
     for (let i = 0; i < adim; i++) { fizik(G, s, dt / adim); if (s.zip) break; }
   }
+  if (s.cek && s.ankraj) {
+    const d = p.konum.distanceTo(s.ankraj);
+    if (d <= 3 || p.konum.y + 1 >= s.cek.ust) cekBitir(G, s, true);
+    else if (s.cek.sure > 4) cekBitir(G, s, false);
+  }
   if (!sonlu(p.konum) || !sonlu(p.hiz)) p.isinla(s.v(0, 60, 0));
-  p.durum = s.dogusSure ? 'dogus' : s.hasarSure > 0.4 ? 'hasar' : (s.saldiriSure && !s.ankraj) ? s.saldiri : s.zip ? 'zip' : s.duvar ? 'duvar' : s.ankraj ? 'sallan' : p.yerde ? (Math.hypot(p.hiz.x, p.hiz.z) < 0.3 ? 'dur' : (basili('ShiftLeft') || basili('ShiftRight')) ? 'kos' : 'yuru') : p.hiz.y > 0 ? 'zipla' : 'dus';
+  p.durum = s.dogusSure ? 'dogus' : s.hasarSure > 0.4 ? 'hasar' : (s.saldiriSure && !s.ankraj) ? s.saldiri : s.zip ? 'zip' : s.duvar ? 'duvar' : s.cek ? 'cek' : s.ankraj ? 'sallan' : p.yerde ? (Math.hypot(p.hiz.x, p.hiz.z) < 0.3 ? 'dur' : (basili('ShiftLeft') || basili('ShiftRight')) ? 'kos' : 'yuru') : p.hiz.y > 0 ? 'zipla' : 'dus';
   s.maxHiz = Math.max(s.maxHiz, p.hiz.length());
-  const sonHedef = ankrajBul(G, s);
+  const sonHedef = s.cek ? { nokta: s.ankraj } : (yh || ankrajBul(G, s));
   p.nisanVar = !!sonHedef; p.nisanNokta = sonHedef ? sonHedef.nokta.clone() : null;
   kamera(G, s, dt); kahraman(G, s, dt);
   if (G.test && !s.rapor && s.zaman >= 6) {
