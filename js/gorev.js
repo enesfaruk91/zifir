@@ -273,15 +273,15 @@ export function kur(G) {
     return en ? V(en.x, en.h, en.z) : null;
   };
   const EGITIM = [
-    { ad: 'Çatıya Çık', metin: 'Sağ tıkı BASILI tut: yukarı ağ at', tuslar: ['Sağ tık (basılı)'], hedef: 1,
+    { ad: 'Çatıya Çık', metin: 'Bir çatıya bak ve E ile çatıya çekil', tuslar: ['E'], hedef: 1,
       baslat() { egitimY0 = oyuncu().y; egitimSay.konus = 0; aktif.isaret = catiBul(15, 90, Math.max(18, egitimY0 + 10)); },
       guncelle() { const o = G.oyuncu; return egitimSay.konus > 0 || (o?.yerde && o.konum.y > Math.max(12, egitimY0 + 8)); } },
-    { ad: 'Sallan', metin: 'Binadan binaya sallan', tuslar: ['Sağ tık (basılı)', 'bırak: fırla'], hedef: 3,
+    { ad: 'Sallan', metin: 'Sağ tıkı basılı tut: salın · bırak: fırla (3 kez)', tuslar: ['Sağ tık (basılı)', 'bırak: fırla'], hedef: 3,
       baslat() { egitimSay.salla = 0; aktif.isaret = null; },
       guncelle() { aktif.ilerleme = Math.min(3, egitimSay.salla); return egitimSay.salla >= 3; } },
-    { ad: 'Hedefe Çekil', metin: 'E ile hedefe çekil', tuslar: ['E'], hedef: 1,
-      baslat() { egitimSay.zip = 0; aktif.isaret = catiBul(30, 120, 20); },
-      guncelle() { return egitimSay.zip > 0; } },
+    { ad: 'Sapan', metin: 'Sağ tık basılıyken Space: çift ağla sapan gibi fırla', tuslar: ['Sağ tık', 'Space'], hedef: 1,
+      baslat() { egitimSay.sapan = 0; aktif.isaret = null; },
+      guncelle() { return egitimSay.sapan > 0; } },
     { ad: 'Dronları Vur', metin: 'Sol tıkla 3 dronu vur', tuslar: ['Sol tık'], hedef: 3,
       baslat() { egitimSay.dron = 0; egitimDronlar = []; },
       guncelle() {
@@ -318,6 +318,7 @@ export function kur(G) {
     baslat(kayit.zincir || 0);
   }
   G.olay.on('sallanBasla', () => { egitimSay.salla++; });
+  G.olay.on('sapan', () => { egitimSay.sapan = (egitimSay.sapan || 0) + 1; });
   G.olay.on('zip', () => { egitimSay.zip++; });
   G.olay.on('konus', () => { egitimSay.konus++; });
   G.olay.on('devBasla', () => { egitimSay.dev++; });
