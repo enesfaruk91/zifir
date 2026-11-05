@@ -1,6 +1,7 @@
 // ŞEHİR — gece neon şehri, çarpışma/ankraj fiziği (SOZLESME.md §4)
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const P = 57;            // sokak aralığı (m)
@@ -189,6 +190,7 @@ float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
   return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
 `;
 
+const IS = { acik: { value: 1.5 }, penc: { value: 1 }, zemin: { value: 1.6 } }; // saat dilimi ortak uniformlari
 function binaMalzemesi(n, catiTex) {
   const m = new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.72, metalness: 0.15,
@@ -196,7 +198,7 @@ function binaMalzemesi(n, catiTex) {
     emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 1.05,
   });
   m.onBeforeCompile = (s) => {
-    s.uniforms.uCati = { value: catiTex };
+    s.uniforms.uCati = { value: catiTex }; s.uniforms.uAcik = IS.acik; s.uniforms.uPenc = IS.penc;
     s.vertexShader = s.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec4 aSeed; flat varying vec3 vFN; varying vec3 vLP; flat varying vec3 vSz; flat varying vec4 vSd;`)
@@ -206,7 +208,7 @@ vSz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>
 flat varying vec3 vFN; varying vec3 vLP; flat varying vec3 vSz; flat varying vec4 vSd;
-uniform sampler2D uCati;
+uniform sampler2D uCati; uniform float uAcik, uPenc;
 ${GLSL_HASH}
 vec3 trimCol(float i){ return i<1.5 ? vec3(0.1,0.9,1.0) : (i<2.5 ? vec3(1.0,0.2,0.8) : vec3(1.0,0.55,0.12)); }`)
       .replace('#include <map_fragment>', `
@@ -228,6 +230,14 @@ if (ustYuz) {
   diffuseColor *= texture2D(uCati, cu);
 } else {
   diffuseColor *= texture2D(map, cuv);
+}
+// okunurluk: asgari parlaklik + cati/ust kenar (parapet)
+diffuseColor.rgb = max(diffuseColor.rgb * uAcik, vec3(0.14, 0.15, 0.18));
+if (ustYuz) {
+  float pe = min(vSz.x * 0.5 - abs(vLP.x * vSz.x), vSz.z * 0.5 - abs(vLP.z * vSz.z));
+  diffuseColor.rgb = mix(vec3(0.62, 0.64, 0.7), diffuseColor.rgb, smoothstep(0.35, 0.6, pe));
+} else if (v > H - 0.45) {
+  diffuseColor.rgb = vec3(0.5, 0.52, 0.58);
 }`)
       .replace('#include <emissivemap_fragment>', `
 if (!ustYuz) {
@@ -237,7 +247,7 @@ if (!ustYuz) {
   float w1 = h21(wc), w2 = h21(wc + 7.7);
   wl *= step(0.14, w1);
   vec3 wcol = w2 < 0.14 ? vec3(0.62, 0.78, 1.0) : mix(vec3(1.0, 0.58, 0.2), vec3(1.0, 0.82, 0.5), w2);
-  totalEmissiveRadiance = wcol * wl * 1.15;
+  totalEmissiveRadiance = wcol * wl * 1.15 * uPenc;
   if (false) {
     float tr = 0.0;
     if (v > H - 0.55) tr = 1.0;
@@ -256,13 +266,14 @@ function zeminMalzemesi(parklar, envTex) {
   const park = parklar.map(p => new THREE.Vector4(p.x, p.z, P / 2 - KALDIRIM - YOL_YARI, 0));
   while (park.length < 4) park.push(new THREE.Vector4(1e5, 1e5, 1, 0));
   m.onBeforeCompile = (s) => {
+    s.uniforms.uZm = IS.zemin;
     s.uniforms.uParks = { value: park }; s.uniforms.uAsf = { value: tAsf }; s.uniforms.uAsfR = { value: tAsfR }; s.uniforms.uKal = { value: tKal };
     s.vertexShader = s.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vWP; uniform vec4 uParks[4]; uniform sampler2D uAsf, uAsfR, uKal;
+varying vec3 vWP; uniform float uZm; uniform vec4 uParks[4]; uniform sampler2D uAsf, uAsfR, uKal;
 ${GLSL_HASH}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 {
@@ -319,7 +330,7 @@ ${GLSL_HASH}`)
   // kanal kıyısı neon çizgisi
   float kd = abs(abs(p.y - ${F(KANAL_Z)}) - ${F(KANAL_YARI)});
   if (inCity && kd < 0.22) em += vec3(0.1, 0.9, 1.0) * 1.6;
-  diffuseColor.rgb = col;
+  diffuseColor.rgb = max(col * uZm, vec3(0.03, 0.032, 0.04));
   roughnessFactor = rough;
   totalEmissiveRadiance += em;
 }`)
@@ -345,16 +356,15 @@ export function kur(G) {
   sahne.background = sisRenk.clone();
   // gokyuzu.jpg: ay u=0.75,v=0.34 -> yon (0, 0.48, 0.877)
   const ayYon = new THREE.Vector3(0, 0.48, 0.877).normalize();
-  let zeminMat = null;
+  let zeminMat = null, envGece = null;
   const gokTex = _tl.load('assets/gokyuzu.jpg', (t) => {
     const pmrem = new THREE.PMREMGenerator(G.renderer);
     const envTex = pmrem.fromEquirectangular(t).texture; pmrem.dispose();
-    sahne.environment = envTex; sahne.environmentIntensity = 0.2;
-    if (zeminMat) { zeminMat.envMap = envTex; zeminMat.needsUpdate = true; }
+    envGece = envTex; saatEnv();
   });
   gokTex.colorSpace = THREE.SRGBColorSpace;
   gokTex.mapping = THREE.EquirectangularReflectionMapping; gokTex.wrapS = THREE.RepeatWrapping;
-  sahne.background = gokTex; sahne.backgroundIntensity = 0.55; sahne.backgroundBlurriness = 0;
+  sahne.background = gokTex; sahne.backgroundIntensity = 0.9; sahne.backgroundBlurriness = 0;
   const catiTex = doku('cati.jpg');
 
   const hemi = new THREE.HemisphereLight(0x6a7a9a, 0x1a2030, 1.1);
@@ -997,8 +1007,71 @@ void main(){
     kanal: { z: KANAL_Z, yari: KANAL_YARI },
   };
 
+  // ---- saat dilimi: gunduz / alacakaranlik / gece ----
+  const C = (h) => new THREE.Color(h);
+  const SAAT = {
+    gunduz: { sky: C(0xc4dcff), zem: C(0x9a9488), hemi: 1.7, dir: C(0xfff0d8), dirI: 3.0, yon: new THREE.Vector3(0.4, 0.62, 0.68), sis: C(0xbcd2ea), sisY: 0.0007, env: 0.8, bgI: 1, poz: 1.0, penc: 0.1, acik: 1.35, zemin: 1.5, havuz: 0.0, tur: 3.5, ray: 1.2, mie: 0.004, mieG: 0.8 },
+    alacakaranlik: { sky: C(0x9bb8e8), zem: C(0x8c7a6c), hemi: 2.0, dir: C(0xffb274), dirI: 2.7, yon: new THREE.Vector3(-0.35, 0.075, 0.92), sis: C(0xa5b3cc), sisY: 0.0011, env: 0.65, bgI: 1, poz: 1.15, penc: 0.45, acik: 1.5, zemin: 2.0, havuz: 0.4, tur: 6, ray: 2.6, mie: 0.004, mieG: 0.9 },
+    gece: { sky: C(0x8294bf), zem: C(0x303a56), hemi: 2.3, dir: C(0xa8bcff), dirI: 2.1, yon: new THREE.Vector3(0, 0.48, 0.877), sis: C(0x1f283c), sisY: 0.0020, env: 0.35, bgI: 0.9, poz: 1.3, penc: 1.0, acik: 1.5, zemin: 1.6, havuz: 0.6, tur: 0, ray: 0, mie: 0, mieG: 0 },
+  };
+  for (const k in SAAT) SAAT[k].yon.normalize();
+  const gok = new Sky(); gok.scale.setScalar(1800); gok.frustumCulled = false; gok.visible = false; gok.renderOrder = -11;
+  sahne.add(gok);
+  const envOnbellek = {};
+  function skyEnv(ad) {
+    if (envOnbellek[ad]) return envOnbellek[ad];
+    const sc = new THREE.Scene(), sk = new Sky(); sk.scale.setScalar(100); sc.add(sk);
+    const h = SAAT[ad], u = sk.material.uniforms;
+    u.turbidity.value = h.tur; u.rayleigh.value = h.ray; u.mieCoefficient.value = h.mie; u.mieDirectionalG.value = h.mieG; u.sunPosition.value.copy(h.yon);
+    const pm = new THREE.PMREMGenerator(G.renderer);
+    const t = pm.fromScene(sc, 0, 0.1, 1000).texture; pm.dispose(); sk.geometry.dispose(); sk.material.dispose();
+    return (envOnbellek[ad] = t);
+  }
+  const cur = { sky: C(0), zem: C(0), dir: C(0), sis: C(0), yon: new THREE.Vector3(), hemi: 0, dirI: 0, sisY: 0, env: 0, bgI: 1, poz: 1, penc: 1, acik: 1, zemin: 1, havuz: 0, tur: 0, ray: 0, mie: 0, mieG: 0 };
+  const SAYI = ['hemi', 'dirI', 'sisY', 'env', 'bgI', 'poz', 'penc', 'acik', 'zemin', 'havuz', 'tur', 'ray', 'mie', 'mieG'];
+  function saatEnv() {
+    const ad = G.saatDilimi, gece = ad === 'gece';
+    const tex = gece ? envGece : skyEnv(ad);
+    if (!tex) return;
+    sahne.environment = tex;
+    if (zeminMat) { zeminMat.envMap = tex; zeminMat.needsUpdate = true; }
+  }
+  function saatUygula(k) {
+    const h = SAAT[G.saatDilimi];
+    cur.sky.lerp(h.sky, k); cur.zem.lerp(h.zem, k); cur.dir.lerp(h.dir, k); cur.sis.lerp(h.sis, k); cur.yon.lerp(h.yon, k).normalize();
+    for (const n of SAYI) cur[n] += (h[n] - cur[n]) * k;
+    hemi.color.copy(cur.sky); hemi.groundColor.copy(cur.zem); hemi.intensity = cur.hemi;
+    ay.color.copy(cur.dir); ay.intensity = cur.dirI; ayYon.copy(cur.yon);
+    sahne.fog.color.copy(cur.sis); sahne.fog.density = cur.sisY;
+    sahne.environmentIntensity = cur.env; sahne.backgroundIntensity = cur.bgI;
+    IS.acik.value = cur.acik; IS.penc.value = cur.penc; IS.zemin.value = cur.zemin;
+    havuzMat.opacity = cur.havuz; havuz.visible = cur.havuz > 0.02;
+    G.pozTaban = cur.poz;
+    const u = gok.material.uniforms;
+    u.turbidity.value = cur.tur; u.rayleigh.value = cur.ray; u.mieCoefficient.value = cur.mie; u.mieDirectionalG.value = cur.mieG; u.sunPosition.value.copy(cur.yon);
+  }
+  let saatHazir = false;
+  G.saatDilimi = 'alacakaranlik';
+  G.saatAyarla = function (ad, aninda = false) {
+    if (!SAAT[ad]) return;
+    const onceki = G.saatDilimi; G.saatDilimi = ad;
+    const gece = ad === 'gece';
+    gok.visible = !gece; sahne.background = gece ? gokTex : null;
+    saatEnv();
+    if (aninda || !saatHazir) { saatHazir = true; saatUygula(1); }
+    G.olay.emit('saat', ad);
+    return onceki;
+  };
+
   // dahili durum
-  kur._d = { ay, kubbe, suMat, atesBocek, ikazMatA, ikazMatB, aracGuncelle, sehirkam, ayYon, sayac: 0, bina: binalar.length, tabelaSay };
+  kur._d = { saatUygula, gok, ay, kubbe, suMat, atesBocek, ikazMatA, ikazMatB, aracGuncelle, sehirkam, ayYon, sayac: 0, bina: binalar.length, tabelaSay };
+  {
+    let a0 = 'alacakaranlik';
+    try { const v = JSON.parse(localStorage.getItem('zifir_ayar') || '{}').saat; if (SAAT[v]) a0 = v; } catch (e) {}
+    const q0 = qs.get('saat'); if (SAAT[q0]) a0 = q0;
+    G.saatAyarla(a0, true);
+    G.olay.on('ayar', a => { if (a && SAAT[a.saat] && a.saat !== G.saatDilimi) G.saatAyarla(a.saat); });
+  }
   if (qs.get('sehirtest')) {
     const b0 = binalar.find(b => b.h > 40);
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -1027,6 +1100,8 @@ export function guncelle(G, dt) {
   const d = kur._d; if (!d) return;
   const t = G.t;
   d.kubbe.material.uniforms.uT.value = t;
+  d.gok.position.copy(G.kamera.position);
+  if (G.saatDilimi) d.saatUygula(1 - Math.exp(-G.gercekDt * 3.5));
   d.kubbe.position.copy(G.kamera.position);
   d.suMat.uniforms.uT.value = t;
   d.atesBocek.position.y = Math.sin(t * 0.7) * 0.4;

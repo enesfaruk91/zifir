@@ -59,13 +59,13 @@ const gradePass = new ShaderPass({
   void main(){
     vec3 c = texture2D(tDiffuse, vUv).rgb;
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    c = mix(vec3(l), c, 0.92);
-    c = (c - 0.18) * 1.1 + 0.18; c = max(c, 0.0);
+    c = mix(vec3(l), c, 0.97);
+    c = (c - 0.18) * 1.02 + 0.18; c = max(c, 0.0);
     float golge = 1.0 - smoothstep(0.0, 0.35, l), isik = smoothstep(0.25, 1.2, l);
-    c = mix(c, c * vec3(0.82, 0.92, 1.18), golge * 0.55);
-    c = mix(c, c * vec3(1.1, 1.02, 0.88), isik * 0.5);
+    c = mix(c, c * vec3(0.82, 0.92, 1.18), golge * 0.2);
+    c = mix(c, c * vec3(1.1, 1.02, 0.88), isik * 0.3);
     vec2 d = vUv - 0.5;
-    c *= 1.0 - smoothstep(0.35, 0.95, length(d * vec2(1.0, 0.9))) * 0.45;
+    c *= 1.0 - smoothstep(0.35, 0.95, length(d * vec2(1.0, 0.9))) * 0.15;
     c += (fract(sin(dot(vUv * 1000.0 + fract(t) * 37.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * grenGuc;
     c = mix(c, flas.rgb * 1.5, flas.a);
     c *= 1.0 - kararma;
@@ -181,6 +181,7 @@ addEventListener('resize', () => { kamera.aspect = innerWidth / innerHeight; kam
 
 function kare() {
   const gdt = Math.min(G.saat.getDelta(), 0.05);
+  renderer.toneMappingExposure = (G.pozTaban || 1.15) * (G.ayar?.parlaklik || 1);
   efektGuncelle(gdt);
   const dt = gdt * G.zamanOlcek;
   G.t += dt;

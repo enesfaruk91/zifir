@@ -105,10 +105,11 @@ const CSS = `
 #arayuz .sayac.sek div:first-child{animation:sek .4s}
 @keyframes sek{40%{transform:scale(1.25)}}
 /* nişan */
-#arayuz .nisan{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 4px rgba(0,0,0,.7);transition:all .12s}
-#arayuz .nisan.var{width:30px;height:30px;margin:-15px 0 0 -15px;background:transparent;border:2px solid var(--tur);box-shadow:0 0 14px var(--tur),0 0 6px var(--tur) inset;clip-path:none}
-#arayuz .nisan.kilit{width:38px;height:38px;margin:-19px 0 0 -19px;background:transparent;border:2px solid #ff6a3a;box-shadow:0 0 16px #ff6a3a,0 0 6px #ff6a3a inset;transform:rotate(45deg)}
-#arayuz .nisan.var::after,#arayuz .nisan.kilit::after{content:"";position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:#fff}
+#arayuz .kilit{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;display:none;pointer-events:none;animation:kilitDon 2.4s linear infinite;
+ --k:#ff6a3a;background:linear-gradient(var(--k),var(--k)) 0 0/12px 2px no-repeat,linear-gradient(var(--k),var(--k)) 0 0/2px 12px no-repeat,linear-gradient(var(--k),var(--k)) 100% 0/12px 2px no-repeat,linear-gradient(var(--k),var(--k)) 100% 0/2px 12px no-repeat,linear-gradient(var(--k),var(--k)) 0 100%/12px 2px no-repeat,linear-gradient(var(--k),var(--k)) 0 100%/2px 12px no-repeat,linear-gradient(var(--k),var(--k)) 100% 100%/12px 2px no-repeat,linear-gradient(var(--k),var(--k)) 100% 100%/2px 12px no-repeat;filter:drop-shadow(0 0 4px #ff3a1a)}
+@keyframes kilitDon{to{rotate:360deg}}
+#arayuz .agn{position:absolute;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;display:none;pointer-events:none;border-radius:50%;border:1.5px solid var(--tur);box-shadow:0 0 10px var(--tur),0 0 4px var(--tur) inset;
+ background:radial-gradient(circle,#fff 0 2px,transparent 2.5px),repeating-conic-gradient(from 0deg,transparent 0 40deg,rgba(80,255,240,.35) 40deg 45deg)}
 #arayuz .vurus{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;opacity:0;transition:opacity .25s;pointer-events:none}
 #arayuz .vurus.ac{opacity:1;transition:none}
 #arayuz .vurus.bit::before,#arayuz .vurus.bit::after{background:#ff5a3a}
@@ -184,10 +185,11 @@ const CSS = `
 
 const KONTROLLER = [
   ['<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>', 'Yürü'],
-  ['<kbd class="tur">Fare</kbd>', 'Etrafa bak'],
+  ['<kbd class="tur">Fare</kbd>', 'Kamerayı döndür'],
   ['bol'],
-  ['<kbd class="tur">Sol tık</kbd>', 'Ateş · jöle at · KOMBO yap'],
-  ['<kbd class="tur">Sağ tık</kbd> basılı', 'Ağ at: yukarı çekil + sallan, bırak: fırla'],
+  ['<kbd class="tur">Sol tık</kbd>', 'En yakın hedefe saldır · KOMBO yap'],
+  ['<kbd class="tur">Sağ tık</kbd> basılı', 'Ağ at ve sallan (eller sırayla sol-sağ), bırak: fırla'],
+  ['<kbd class="tur">Sağ tık</kbd> + <kbd>Space</kbd>', 'Çift ağ sapan fırlatma'],
   ['<kbd>E</kbd>', 'Hedefe çekil (zip)'],
   ['<kbd>F</kbd>', 'Dokunaç kamçısı'],
   ['<kbd>Space</kbd>', 'Zıpla (havada 2. zıplama)'],
@@ -204,7 +206,7 @@ const DAMLA = `<svg class="damla" viewBox="0 0 48 48"><defs><clipPath id="dk"><r
 const OK = `<svg viewBox="0 0 52 52"><path d="M26 4 46 44 26 35 6 44Z" fill="#2ef2e0" fill-opacity=".85" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`;
 const HASAR_OK = `<svg viewBox="0 0 60 92"><defs><linearGradient id="hg" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff2a55" stop-opacity="0"/><stop offset="1" stop-color="#ff2a55" stop-opacity=".95"/></linearGradient></defs><path d="M30 0 58 70Q30 58 2 70Z" fill="url(#hg)"/></svg>`;
 
-const VARSAYILAN = { hassasiyet: 1, yTers: false, sesAna: 0.8, sesMuzik: 0.8, sesEfekt: 1, fov: 70 };
+const VARSAYILAN = { hassasiyet: 1, yTers: false, sesAna: 0.8, sesMuzik: 0.8, sesEfekt: 1, fov: 70, saat: 'alacakaranlik', parlaklik: 1 };
 let G_, kok, e = {}, vurma = 0, vurus = 0, kilitliydi = false, kuyruk = [], mesajVar = false, toparliyor = false, sonKure = -1, sonPuan = -1;
 let mx = 0, my = 0, pxk = 0, pyk = 0;
 let secili = 0, panel = null, psecili = 0, menuTur = '', menuOge = [], satirlar = [], suruk = null;
@@ -291,6 +293,31 @@ function geri() {
   return false;
 }
 
+const _nv = { v: null };
+function ekranda(p) {
+  const k = G_.kamera; if (!k || !p) return null;
+  const v = (_nv.v ||= new G_.THREE.Vector3()).copy(p).project(k);
+  if (!(v.z < 1) || Math.abs(v.x) > 0.96 || Math.abs(v.y) > 0.96) return null;
+  return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight, v.z];
+}
+let kilitP = null;
+function nisanCiz(oyuncu) {
+  let a = null;
+  if (oyuncu?.nisanHedef?.konum) { _nh = (_nh || new G_.THREE.Vector3()).copy(oyuncu.nisanHedef.konum); _nh.y += 1; a = ekranda(_nh); }
+  e.kilit.style.display = a ? 'block' : 'none';
+  if (a) { e.kilit.style.left = a[0] + 'px'; e.kilit.style.top = a[1] + 'px'; kilitP = [a[0], a[1]]; }
+  let b = null;
+  if (oyuncu?.nisanNokta && !oyuncu.nisanHedef) b = ekranda(oyuncu.nisanNokta);
+  e.agn.style.display = b ? 'block' : 'none';
+  if (b) {
+    const d = Math.max(1, G_.kamera.position.distanceTo(oyuncu.nisanNokta)), sc = Math.max(0.45, Math.min(1.3, 30 / d));
+    e.agn.style.left = b[0] + 'px'; e.agn.style.top = b[1] + 'px'; e.agn.style.transform = 'scale(' + sc.toFixed(2) + ')';
+  }
+  const vp = a || b || null;
+  e.vurus.style.left = vp ? vp[0] + 'px' : '50%'; e.vurus.style.top = vp ? vp[1] + 'px' : '50%';
+}
+let _nh = null;
+
 function satirTanim() {
   const a = G_.ayar;
   const sl = (ad, k, min, max, adim, f) => ({ t: 'sl', ad, k, min, max, adim, f });
@@ -302,6 +329,9 @@ function satirTanim() {
     sl('Efekt sesi', 'sesEfekt', 0, 1, 0.05, v => Math.round(v * 100) + '%'),
     { t: 'tg', ad: 'Kalite', al: () => (G_.kaliteAd?.[G_.kalite] || 'Orta').toUpperCase(), degis: y => {
       const s = ['dusuk', 'orta', 'yuksek']; G_.kaliteAyarla?.(s[(s.indexOf(G_.kalite) + (y || 1) + 3) % 3]); } },
+    { t: 'tg', ad: 'Saat', al: () => ({ gunduz: 'GÜNDÜZ', alacakaranlik: 'ALACAKARANLIK', gece: 'GECE' })[a.saat] || 'ALACAKARANLIK', degis: y => {
+      const s = ['gunduz', 'alacakaranlik', 'gece']; a.saat = s[(Math.max(0, s.indexOf(a.saat)) + (y || 1) + 3) % 3]; G_.saatAyarla?.(a.saat); } },
+    sl('Parlaklık', 'parlaklik', 0.7, 1.6, 0.05, v => Math.round(v * 100) + '%'),
     sl('Görüş alanı (FOV)', 'fov', 60, 100, 1, v => Math.round(v) + '°'),
     { t: 'dg', ad: 'EĞİTİMİ TEKRARLA', islem: () => { G_.gorev?.egitimiTekrarla?.(); if (G_.durum === 'duraklat') devam(); else oyunBaslat(); } },
     { t: 'dg', ad: 'GERİ', islem: () => geri() },
@@ -441,7 +471,8 @@ export function kur(G) {
   e.hud = el('div', 'hud');
   e.hizc = el('canvas', 'hizc', null, e.hud);
   e.vin = el('div', 'vin', null, e.hud);
-  e.nisan = el('div', 'nisan', null, e.hud);
+  e.kilit = el('div', 'kilit', null, e.hud);
+  e.agn = el('div', 'agn', null, e.hud);
   e.vurus = el('div', 'vurus', null, e.hud);
   e.hy = el('div', 'hy', '', e.hud);
   e.ok = el('div', 'ok gizli', OK + '<em></em>', e.hud);
@@ -521,6 +552,7 @@ export function kur(G) {
   o.on('konus', () => odulYaz('ÇATIYA KONDU'));
   o.on('mukemmelBirakis', () => odulYaz('MÜKEMMEL BIRAKIŞ!'));
   o.on('kacis', () => odulYaz('KAÇIŞ!'));
+  o.on('sapan', () => odulYaz('SAPAN!'));
   o.on('halkaGecildi', () => odulYaz('HALKA!'));
   o.on('ipucu', ipucuGoster);
   o.on('ipucuTamam', () => { e.ipucu.classList.add('tamam'); secSes(true); });
@@ -671,8 +703,7 @@ export function guncelle(G, dt) {
   if (vurma > 0) { vurma -= gdt; if (vurma <= 0) e.vin.classList.remove('vur'); }
 
   // nişan
-  e.nisan.classList.toggle('kilit', !!oyuncu?.nisanHedef);
-  e.nisan.classList.toggle('var', !oyuncu?.nisanHedef && !!oyuncu?.nisanVar);
+  nisanCiz(oyuncu);
   if (vurus > 0) { vurus -= gdt; if (vurus <= 0) e.vurus.classList.remove('ac', 'bit'); }
 
   // görev kartı + sayaçlar
