@@ -357,8 +357,12 @@ export function guncelle(G, dt) {
   const y = G.oyuncu?.konum?.y ?? 0;
   if (ruzgar) {
     const yuk = Math.min(1, Math.max(0, y / 120));
-    ruzgar.g.gain.setTargetAtTime((0.08 + k * k * 0.9 + yuk * 0.25) * duraklat * (oyunda || G.durum === 'duraklat' ? 1 : 0.2), t, 0.2);
-    ruzgar.f.frequency.setTargetAtTime(350 + k * 7000, t, 0.2);
+    // Kanat açıkken düşük hızda da hava duyulur; dalışta ses hızla birlikte açılır.
+    const suzul = oyunda && G.oyuncu?.durum === 'suzul';
+    const dalis = oyunda && G.oyuncu?.durum === 'dalis';
+    const hava = suzul ? 0.18 : dalis ? 0.12 * k : 0;
+    ruzgar.g.gain.setTargetAtTime((0.08 + k * k * 0.9 + yuk * 0.25 + hava) * duraklat * (oyunda || G.durum === 'duraklat' ? 1 : 0.2), t, 0.2);
+    ruzgar.f.frequency.setTargetAtTime(350 + k * 7000 + (suzul ? 900 : dalis ? 1800 * k : 0), t, 0.2);
   }
   if (sehir) {
     const az = 1 - Math.min(1, Math.max(0, (y - 5) / 130));

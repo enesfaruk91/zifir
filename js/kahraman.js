@@ -363,8 +363,33 @@ export function kur(G) {
 
   // test ışığı / zemin (yalnız kahramankam)
   const sahneEk = [];
+  // GLB yüklenirken de aynı hareketin basit jöle zarı görünür.
+  const yedekGeo = new THREE.BufferGeometry();
+  const yedekPos = new Float32Array(27);
+  yedekGeo.setAttribute('position', new THREE.BufferAttribute(yedekPos, 3).setUsage(THREE.DynamicDrawUsage));
+  const yedekMat = new THREE.MeshPhysicalMaterial({ color: 0x090315, emissive: 0x260e4a, roughness: 0.12, metalness: 0.2, clearcoat: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+  const yedekZar = new THREE.Mesh(yedekGeo, yedekMat); yedekZar.name = 'zifir-jole-kanat-yedek';
+  yedekZar.visible = false; yedekZar.frustumCulled = false; G.sahne.add(yedekZar); sahneEk.push(yedekZar);
+  let yedekAcik = 0;
+  const ya = new V3(), yb = new V3(), yc = new V3();
+  function yedekZarGuncelle(dt, d) {
+    yedekAcik += kisitla((!gc && d === 'suzul' ? 1 : 0) - yedekAcik, -dt * 5, dt * 4);
+    yedekZar.visible = !gc && yedekAcik > 0.004;
+    if (!yedekZar.visible) return;
+    grup.updateMatrixWorld(true);
+    const yaz = (k, v) => { yedekPos[k * 3] = v.x; yedekPos[k * 3 + 1] = v.y; yedekPos[k * 3 + 2] = v.z; };
+    for (let i = 0; i < 2; i++) {
+      omuz[i].getWorldPosition(ya); yumruk[i].getWorldPosition(yb); kalcaE[i].getWorldPosition(yc);
+      yc.lerp(ya, 1 - yedekAcik); yaz(i * 3, ya); yaz(i * 3 + 1, yb); yaz(i * 3 + 2, yc);
+    }
+    kalca.getWorldPosition(ya); ayak[0].getWorldPosition(yb); ayak[1].getWorldPosition(yc);
+    yb.lerp(ya, 1 - yedekAcik); yc.lerp(ya, 1 - yedekAcik);
+    yaz(6, ya); yaz(7, yb); yaz(8, yc);
+    yedekMat.opacity = 0.8 * yedekAcik;
+    yedekGeo.attributes.position.needsUpdate = true; yedekGeo.computeVertexNormals();
+  }
   if (kam) {
-    G.sahne.fog = null; G.sahne.background = new THREE.Color(0x0c0818);
+    G.sahne.fog = new THREE.Fog(0x0c0818, 1e6, 2e6); G.sahne.background = new THREE.Color(0x0c0818);
     const hm = new THREE.HemisphereLight(0x9a80ff, 0x201030, 1.6); G.sahne.add(hm);
     const gunes = new THREE.DirectionalLight(0xffe8d0, 4); gunes.position.set(3, 5, 4); G.sahne.add(gunes);
     const rim = new THREE.PointLight(0x20f0e0, 18, 12); rim.position.set(-3, 2.5, -2); G.sahne.add(rim);
@@ -425,7 +450,7 @@ export function kur(G) {
   const cur = {}, hd = {}; for (const k of KEYS) cur[k] = hd[k] = 0;
   const son = { durum: 'dur', hiz: new V3(), yerde: true, dev: false, el: 'sag' };
   let ct = 0, stepAcc = 0, stepSide = 1, izi = 0, dDevS = 2.0, slamBekle = false;
-  let bitFlas = 0, durumT = 0, sayac = 0, ph = 0, devS = 1, devV = 0, devK = 0, pud = 0, hs = 0, sp = 0;
+  let bitFlas = 0, durumT = 0, sayac = 0, ph = 0, devS = 1, devK = 0, pud = 0, hs = 0, sp = 0;
   const gecici = { ax: 0, az: 0 }; const qw = new THREE.Quaternion(), dv = new V3(), sw = new V3();
 
   function kolHedef(i, nokta) {
@@ -471,6 +496,18 @@ export function kur(G) {
         hd.sx = 0.25; hd.bx = -0.3; hd.hy = 0.0; hd.kr = 0.05 * Math.sin(t * 5);
         hd.lx0 = -0.35; hd.lx1 = 0.15; hd.lk0 = 0.35; hd.lk1 = 0.55;
         for (let i = 0; i < 2; i++) { const s = i ? -1 : 1; hd['az' + i] = s * (1.35 + fl); hd['ax' + i] = -0.3; hd['ae' + i] = -0.2 - fl; hd['lz' + i] = s * 0.22; }
+        break;
+      }
+      case 'suzul': case 'dalis': {
+        const dal = d === 'dalis';
+        hd.kp = dal ? kisitla(Math.PI / 2 - Math.atan2(vy, Math.max(0.5, hs)), 0.9, 3.0) : 1.65;
+        hd.bx = dal ? 0 : -0.45;
+        for (let i = 0; i < 2; i++) {
+          const s = i ? -1 : 1;
+          hd['az' + i] = s * (dal ? 0.08 : 1.5); hd['ax' + i] = dal ? 0 : -0.15;
+          hd['ae' + i] = -0.03; hd['lx' + i] = 0; hd['lk' + i] = 0;
+          hd['lz' + i] = s * (dal ? 0.025 : 0.28);
+        }
         break;
       }
       case 'sallan': {
@@ -566,11 +603,11 @@ export function kur(G) {
 
   function sirtGuncelle(t) {
     t = t || 0;
-    const stream = yumus(2, 18, sp), enerji = 1 + 1.1 * devK, tz = t * (1 + 1.1 * devK);
+    const stream = yumus(2, 18, sp), enerji = 1 + 0.45 * devK, tz = t * (1 + 0.45 * devK);
     for (const d of sirt) {
       const s = Math.sign(d.yan), ls = d.pts;
       let dir = new V3(s * 0.45, 0.75, -0.55).normalize().lerp(new V3(s * 0.15, 0.25, -1), stream * 0.8).normalize();
-      const l = d.boy * (1 + 1.5 * devK) / SEGS;
+      const l = d.boy * (1 + 0.3 * devK) / SEGS;
       ls[0].set(d.x, d.y, -0.15);
       const curl = (0.1 + 0.12 * Math.sin(tz * 1.7 + d.faz)) * (1 - 0.65 * stream) * enerji;
       for (let i = 1; i <= SEGS; i++) {
@@ -579,7 +616,7 @@ export function kur(G) {
         dir.applyAxisAngle(AX, a1).applyAxisAngle(AY, a2 * 0.5).normalize();
         ls[i].copy(ls[i - 1]).addScaledVector(dir, l);
       }
-      d.tp.guncelle(ls, 0.085 * (1 + 0.7 * devK), 0.012 + 0.03 * devK, 1);
+      d.tp.guncelle(ls, 0.085 * (1 + 0.25 * devK), 0.012 + 0.015 * devK, 1);
       const par = d.tp.mesh.parent;
       for (let j = 0; j < 2; j++) {
         const m = d.dm[j];
@@ -624,7 +661,6 @@ export function kur(G) {
   // Yüklenene / hata verene kadar prosedürel model görünür. Hata = prosedürel kalır.
   const YOL = 'assets/3d/zifir_ual.glb';
   const KALIN = { spine002: [1.2, 1, 1.12], spine003: [1.18, 1, 1.1], upper_arm: [1.32, 1, 1.32], forearm: [1.25, 1, 1.25], thigh: [1.25, 1, 1.25], shin: [1.12, 1, 1.12], hand: [1.22, 1.22, 1.22], f_: [1.25, 1.25, 1.25], thumb: [1.25, 1.25, 1.25] };
-  const DEVKAL = { spine002: [1.2, 1, 1.15], spine003: [1.3, 1, 1.22], shoulder: [1.2, 1.2, 1.2], upper_arm: [1.3, 1.05, 1.3], forearm: [1.35, 1.05, 1.35], hand: [1.35, 1.35, 1.35], thigh: [1.08, 1, 1.08], shin: [1.1, 1, 1.1] };
   const ALT = /(hips|thigh|shin|foot|toe|^root)/i;
   const dikW = [];
 
@@ -634,7 +670,7 @@ export function kur(G) {
     const meshes = [], B = {}, bonelar = [];
     gm.traverse(o => { if (o.isBone) { B[o.name.replace(/[.:]/g, '')] = o; bonelar.push(o); } if (o.isSkinnedMesh) meshes.push(o); });
     const kb = (ad) => B['DEF-' + ad];
-    for (const n of ['hips', 'spine001', 'spine002', 'spine003', 'head', 'upper_armL', 'upper_armR', 'forearmL', 'forearmR', 'handL', 'handR', 'thighL', 'thighR', 'shinL', 'shinR', 'footL', 'toeL']) if (!kb(n)) throw new Error('kemik yok: ' + n);
+    for (const n of ['hips', 'spine001', 'spine002', 'spine003', 'head', 'upper_armL', 'upper_armR', 'forearmL', 'forearmR', 'handL', 'handR', 'thighL', 'thighR', 'shinL', 'shinR', 'footL', 'footR', 'toeL']) if (!kb(n)) throw new Error('kemik yok: ' + n);
     if (!meshes.length || !gltf.animations?.length) throw new Error('mesh/animasyon yok');
 
     const olc = () => { kok.updateMatrixWorld(true); const b = new THREE.Box3(); for (const m of meshes) { m.skeleton.update(); m.computeBoundingBox(); b.union(m.boundingBox.clone().applyMatrix4(m.matrixWorld)); } return b; };
@@ -674,9 +710,9 @@ export function kur(G) {
     const eks = [];
     const ekle = (kemik, sarmal) => {
       const m = new THREE.Matrix4().copy(kok.matrixWorld).invert().multiply(kemik.matrixWorld);
-      const p = new V3(), q = new THREE.Quaternion(), s = new V3(); m.decompose(p, q, s);
-      kok.add(sarmal);
-      eks.push({ kemik, sarmal, rp: p, rqi: q.clone().invert() });
+      kok.add(sarmal); sarmal.matrixAutoUpdate = false;
+      // Tam bağ matrisi ölçek/shear dahil izlenir; yalnız quaternion dev gövdeden aksesuarları ayırır.
+      eks.push({ kemik, sarmal, bagTersi: m.invert() });
     };
     {
       const H = bas.max.y - bas.min.y, W = bas.max.x - bas.min.x, D = bas.max.z - bas.min.z;
@@ -691,7 +727,7 @@ export function kur(G) {
         const sg = i ? -1 : 1, x = sg * 0.3 * W, y = cy + 0.02 * H;
         let zy = -9; for (const q of basK) if (Math.abs(q.x - x) < 0.025 && Math.abs(q.y - y) < 0.03 && q.z > zy) zy = q.z;
         if (zy < -8) zy = cz + (D / 2) * Math.sqrt(Math.max(0.05, 1 - Math.pow(x / (W / 2), 2) - Math.pow((y - cy) / (H / 2), 2)));
-        piv.position.set(x, y, zy + 0.012); piv.scale.setScalar(gs); piv.userData.bx = gs; piv.rotation.y = sg * 0.18; w.add(piv);
+        piv.position.set(x, y, zy + 0.012); piv.scale.setScalar(gs); piv.userData.bx = gs; piv.userData.by = gs; piv.rotation.y = sg * 0.18; w.add(piv);
       });
       ekle(kb('head'), w);
     }
@@ -743,7 +779,7 @@ export function kur(G) {
     }
 
     const ex0 = bw(kb('handL')).x > bw(kb('handR')).x;
-    const mk = (a, b) => ({ ust: kb('upper_arm' + a), on: kb('forearm' + a), el: kb('hand' + a), uyluk: kb('thigh' + a), baldir: kb('shin' + a) });
+    const mk = (a, b) => ({ ust: kb('upper_arm' + a), on: kb('forearm' + a), el: kb('hand' + a), uyluk: kb('thigh' + a), baldir: kb('shin' + a), ayak: kb('foot' + a) });
     const K = { sol: mk(ex0 ? 'L' : 'R'), sag: mk(ex0 ? 'R' : 'L') };
     const elK = { sol: new V3(), sag: new V3() };
 
@@ -802,7 +838,7 @@ export function kur(G) {
     on('mukemmelBirakis', () => { g.flip = 0.0001; g.flipT = 0.75; });
     on('konus', () => { if (!g.tek) tekBaslat('Jump_Land', 1.1, 0.5, 'tam'); });
 
-    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvarKos', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur' };
+    const ESLE = { dur: 'dur', yuru: 'yuru', kos: 'kos', zipla: 'zipla', dus: 'dus', sallan: 'sallan', cek: 'sallan', sapan: 'sapan', duvar: 'duvar', duvarKos: 'duvarKos', zip: 'zip', yumruk: 'yumruk', kamci: 'kamci', hasar: 'hasar', dogus: 'dogus', numara: 'dus', kacis: 'dus', konus: 'dur', suzul: 'suzul', dalis: 'dalis' };
     const esle = (ad) => {
       if (ESLE[ad]) return ESLE[ad];
       const l = String(ad).toLowerCase();
@@ -826,7 +862,7 @@ export function kur(G) {
 
     const ABD = +(QS.get('abd') ?? 0.3), PUN = +(QS.get('pun') ?? 0.5);
     const qk = new THREE.Quaternion(), vv = new V3(), omuzP = new V3(), invK = new THREE.Matrix4(), mm = new THREE.Matrix4();
-    const fwd = new V3(), upV = new V3(), yanSol = new V3(), dirV = new V3(), tmpH = new V3();
+    const kalP = new V3(), kalP2 = new V3(), fwd = new V3(), upV = new V3(), yanSol = new V3(), dirV = new V3(), tmpH = new V3();
 
     let izAcc = 0;
     function guncelle(dt, t) {
@@ -841,12 +877,13 @@ export function kur(G) {
       const girdi = d !== g.d; if (girdi) { g.d = d; g.dt = 0; }
       g.dt += dt;
       const havada = !son.yerde;
-      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9 && d !== 'duvar' && d !== 'duvarKos'; // duvarda grup yönü oyuncu.js'in (duvara dik): ezme, yuvarlanma yok
+      const egik = vv.set(0, 1, 0).applyQuaternion(grup.quaternion).y < 0.9 && d !== 'duvar' && d !== 'duvarKos' && d !== 'suzul' && d !== 'dalis'; // duvarda grup yönü oyuncu.js'in (duvara dik): ezme, yuvarlanma yok
       if (egik) g.yuvarlan = -1;
       if (g.yuvarlan > 0) { g.yuvarlan -= 1; if (g.yuvarlan <= 0) { g.yuvarlan = -2; tekBaslat('Roll', 1.5, 0.55, 'tam'); } }
       if (g.inis > 0) g.inis -= dt;
       if (g.flipT > 0) { g.flip += dt / 0.75; if (g.flip >= 1) { g.flip = 0; g.flipT = 0; } }
 
+      if (d === 'suzul' || d === 'dalis') { g.flip = 0; g.flipT = 0; }
       if (girdi) {
         if (d === 'yumruk' && !(g.tek && /Punch|Spell/.test(g.tek.ad))) kombo(QS.has('kombo') ? { komboNo: +QS.get('kombo') } : null);
         if (d === 'kamci') tekBaslat('Spell_Simple_Shoot', 1.8, 0.45);
@@ -861,7 +898,7 @@ export function kur(G) {
         case 'yuru': lo = hs < 3.4 ? 'Walk_Loop' : 'Jog_Fwd_Loop'; loTs = hs < 3.4 ? kisitla(hs / 1.5, 0.7, 1.9) : kisitla(hs / 4.4, 0.85, 1.5); break;
         case 'kos': lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = hs < 7.5 ? kisitla(hs / 4.4, 0.85, 1.7) : kisitla(hs / 8, 0.85, 1.6); break;
         case 'zipla': if (g.dt < sure('Jump_Start') * 0.85 && havada) { lo = 'Jump_Start'; tekr = true; } else lo = 'Jump_Loop'; break;
-        case 'dus': case 'sallan': case 'zip': case 'sapan': lo = 'Jump_Loop'; break;
+        case 'dus': case 'sallan': case 'zip': case 'sapan': case 'suzul': case 'dalis': lo = 'Jump_Loop'; break;
         case 'duvar': if (sp > 0.3) { lo = 'Crouch_Fwd_Loop'; loTs = kisitla(sp / 1.6, 0.6, 1.8); } else lo = 'Crouch_Idle_Loop'; break;
         case 'duvarKos': lo = 'Sprint_Loop'; loTs = kisitla(sp / 8, 0.8, 1.6); break;
         case 'yumruk': case 'kamci': case 'hasar': if (hs > 0.8) { lo = hs < 7.5 ? 'Jog_Fwd_Loop' : 'Sprint_Loop'; loTs = kisitla(hs / 5, 0.8, 1.5); } break;
@@ -882,11 +919,8 @@ export function kur(G) {
       for (const bn of bonelar) {
         const ad = bn.name.replace('DEF-', '').replace(/[LR]$/, '');
         const kk = KALIN[ad] || (ad.startsWith('f_') ? KALIN.f_ : ad.startsWith('thumb') ? KALIN.thumb : null);
-        const dk = devK > 0.001 ? DEVKAL[ad] : null;
-        if (kk || dk) {
-          const a0 = kk || [1, 1, 1];
-          bn.scale.set(a0[0] * (dk ? 1 + (dk[0] - 1) * devK : 1), a0[1] * (dk ? 1 + (dk[1] - 1) * devK : 1), a0[2] * (dk ? 1 + (dk[2] - 1) * devK : 1));
-        }
+        // Dev büyümesi govde kökünde uniform; eklem ölçeklerini zincir boyunca çarpma.
+        if (kk) bn.scale.set(kk[0], kk[1], kk[2]);
       }
       gm.updateMatrixWorld(true);
 
@@ -898,6 +932,23 @@ export function kur(G) {
       if (devK > 0.01) { ek(solT.ust, 0, 0, ABD * devK); ek(sagT.ust, 0, 0, -ABD * devK); }
       if (egik) {
         for (const T of [solT, sagT]) { ek(T.uyluk, -1.35, 0, 0); ek(T.baldir, 1.8, 0, 0); }
+      } else if (d === 'suzul' || d === 'dalis') {
+        // süzül: yüzüstü yatay, kollar T-poz (hafif aşağı), bacaklar açık; dalış: kollar gövdede, bacaklar düz, baş aşağı ok
+        const dal = d === 'dalis', w = 0.35 + 0.65 * yumus(0, 0.18, g.dt);
+        pivH = dal ? kisitla(Math.PI / 2 - e, 0.9, 3.0) : kisitla(Math.PI / 2 - e * 0.7, 1.25, 1.95);
+        for (const T of [solT, sagT]) {
+          const sg = T === solT ? 1 : -1;
+          bw(T.ust, omuzP);
+          if (dal) hed.copy(omuzP).addScaledVector(upV, -1.2).addScaledVector(yanSol, sg * 0.14);
+          else hed.copy(omuzP).addScaledVector(yanSol, sg * 3).addScaledVector(fwd, 0.5);
+          kolUzat(T, hed, w);
+          bw(T.uyluk, kalP);
+          hed.copy(kalP).addScaledVector(upV, -1).addScaledVector(yanSol, sg * (dal ? 0.03 : 0.4));
+          yonelt(T.uyluk, T.baldir, hed, w);
+          bw(T.baldir, kalP2); hed.copy(kalP2).addScaledVector(upV, -1).addScaledVector(yanSol, sg * (dal ? 0.02 : 0.3));
+          yonelt(T.baldir, T.ayak, hed, w);
+        }
+        if (!dal) ek(kb('head'), -0.45, 0, 0);
       } else if (d === 'sallan') {
         pivH = kisitla(0.55 - 0.5 * e, 0.1, 1.0);
         // el: 'sol' | 'sag' (oyuncu.js) -> pozlar aynalı; el değişiminde 0.15 sn yumuşak geçiş
@@ -976,7 +1027,7 @@ export function kur(G) {
         }
         if (p > 1) g.slam = -1;
       }
-      if (devK > 0.01 && !egik && d !== 'sallan' && d !== 'zip' && d !== 'duvar' && d !== 'duvarKos') pivH += 0.16 * devK;
+      if (devK > 0.01 && !egik && d !== 'sallan' && d !== 'zip' && d !== 'duvar' && d !== 'duvarKos' && d !== 'suzul' && d !== 'dalis') pivH += 0.16 * devK;
       if (g.kick >= 0 && !havada) {
         const k = Math.sin(kisitla(g.kick / 0.5, 0, 1) * Math.PI);
         ek(sagT.uyluk, -1.6 * k, 0, 0); ek(sagT.baldir, 0.5 * k, 0, 0);
@@ -992,16 +1043,136 @@ export function kur(G) {
 
       invK.copy(kok.matrixWorld).invert();
       for (const a of eks) {
-        mm.multiplyMatrices(invK, a.kemik.matrixWorld).decompose(_p, _q, _s);
-        _q.multiply(a.rqi);
-        a.sarmal.quaternion.copy(_q);
-        a.sarmal.position.copy(a.rp).applyQuaternion(_q).negate().add(_p);
+        a.sarmal.matrix.multiplyMatrices(invK, a.kemik.matrixWorld).multiply(a.bagTersi);
+        a.sarmal.updateMatrixWorld(true);
       }
       for (const ad of ['sol', 'sag']) {
         const T = K[ad];
         mm.multiplyMatrices(invK, T.el.matrixWorld); _p.setFromMatrixPosition(mm);
         mm.multiplyMatrices(invK, T.on.matrixWorld); wc.setFromMatrixPosition(mm);
         elK[ad].copy(_p).addScaledVector(d2.subVectors(_p, wc).normalize(), 0.09);
+      }
+      zarGuncelle(dt, t, d);
+    }
+
+    // ---- JÖLE KANAT: Zifir'in kendi kara jölesinden gerilen zar (kemik noktalarından güncellenen tek mesh) ----
+    const ZN = 8, ZM = 4, ZT = (ZN + 1) * (ZM + 1);
+    const zarPos = new Float32Array(3 * ZT * 3), zarNor = new Float32Array(3 * ZT * 3);
+    const zarGeo = new THREE.BufferGeometry();
+    {
+      const uv = new Float32Array(3 * ZT * 2), fl = new Float32Array(3 * ZT), bl = new Float32Array(3 * ZT), idx = [];
+      for (let q = 0; q < 3; q++) for (let i = 0; i <= ZN; i++) for (let j = 0; j <= ZM; j++) {
+        const k = q * ZT + i * (ZM + 1) + j, u = i / ZN, v = j / ZM;
+        uv[k * 2] = u; uv[k * 2 + 1] = v;
+        if (q < 2) { fl[k] = v * (0.3 + 0.7 * u); bl[k] = Math.sin(Math.PI * v) * (0.35 + 0.65 * u); }
+        else { fl[k] = u * (0.25 + Math.abs(2 * v - 1) * 0.75); bl[k] = Math.sin(Math.PI * v) * 0.8 * u; }
+        if (i < ZN && j < ZM) { const a = k, b = k + 1, c = k + ZM + 1, dd = k + ZM + 2; idx.push(a, b, c, b, dd, c); }
+      }
+      zarGeo.setAttribute('position', new THREE.BufferAttribute(zarPos, 3).setUsage(THREE.DynamicDrawUsage));
+      zarGeo.setAttribute('normal', new THREE.BufferAttribute(zarNor, 3).setUsage(THREE.DynamicDrawUsage));
+      zarGeo.setAttribute('aUV', new THREE.BufferAttribute(uv, 2));
+      zarGeo.setAttribute('aFl', new THREE.BufferAttribute(fl, 1));
+      zarGeo.setAttribute('aBl', new THREE.BufferAttribute(bl, 1));
+      zarGeo.setIndex(idx);
+    }
+    const zarMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { uT: { value: 0 }, uBill: { value: 0.08 }, uAmp: { value: 1 }, uDir: { value: new V3(0, 1, 0) }, uDev: { value: 0 }, uA: { value: 0 } },
+      vertexShader: `attribute vec2 aUV; attribute float aFl; attribute float aBl;
+uniform float uT; uniform float uBill; uniform float uAmp; uniform vec3 uDir;
+varying vec2 vUV; varying vec3 vN; varying vec3 vV;
+void main(){
+  vUV = aUV;
+  float w = sin(uT*11.0 + aUV.x*7.0 + aUV.y*3.0)*0.04 + sin(uT*19.0 - aUV.x*11.0 + aUV.y*5.0)*0.018;
+  vec3 p = position + uDir*(aBl*uBill + w*aFl*uAmp);
+  vec4 mv = viewMatrix*vec4(p,1.0);
+  vN = normalize(mat3(viewMatrix)*normal); vV = -mv.xyz;
+  gl_Position = projectionMatrix*mv;
+}`,
+      fragmentShader: `uniform float uT; uniform float uDev; uniform float uA;
+varying vec2 vUV; varying vec3 vN; varying vec3 vV;
+void main(){
+  vec3 N = normalize(vN); if(!gl_FrontFacing) N = -N;
+  float f = pow(1.0 - abs(dot(N, normalize(vV))), 2.0);
+  float edge = max(1.0 - smoothstep(0.0, 0.1, vUV.y), smoothstep(0.86, 1.0, vUV.y));
+  edge = max(edge, smoothstep(0.88, 1.0, vUV.x)*0.8);
+  float vein = pow(0.5 + 0.5*sin(vUV.x*26.0 - uT*3.0 + vUV.y*6.0), 6.0);
+  vec3 col = vec3(0.02, 0.01, 0.05) + vec3(0.32, 0.12, 0.85)*f*0.9 + vec3(0.6, 0.22, 1.25)*edge*1.5 + vec3(0.1, 0.65, 0.9)*vein*0.25;
+  float a = clamp(0.5 + 0.28*uDev + 0.3*f + 0.45*edge, 0.0, 0.96) * uA;
+  gl_FragColor = vec4(col, a);
+}`,
+    });
+    const zarMesh = new THREE.Mesh(zarGeo, zarMat); zarMesh.name = 'zifir-jole-kanat'; zarMesh.frustumCulled = false; zarMesh.visible = false; zarMesh.renderOrder = 6; G.sahne.add(zarMesh); sahneEk.push(zarMesh);
+    // dalış hız izi: arkada ince mor çizgiler
+    const izPos = new Float32Array(12 * 3), izRenk = new Float32Array(12 * 3);
+    for (let i = 0; i < 6; i++) { izRenk.set([0.7, 0.28, 1.2], i * 6); izRenk.set([0, 0, 0], i * 6 + 3); }
+    const izGeo2 = new THREE.BufferGeometry();
+    izGeo2.setAttribute('position', new THREE.BufferAttribute(izPos, 3).setUsage(THREE.DynamicDrawUsage));
+    izGeo2.setAttribute('color', new THREE.BufferAttribute(izRenk, 3));
+    const izMat2 = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+    const izMesh = new THREE.LineSegments(izGeo2, izMat2); izMesh.name = 'zifir-dalis-izi'; izMesh.frustumCulled = false; izMesh.visible = false; G.sahne.add(izMesh); sahneEk.push(izMesh);
+    // kapanışta düşen jöle damlaları
+    const zDam = Array.from({ length: 8 }, () => { const m = new THREE.Mesh(damlaGeo, mat); m.visible = false; m.userData.v = new V3(); m.userData.o = 0; dunya.add(m); return m; });
+    let zk = 0, zOnce = 'dur', izK = 0;
+    const zA = new V3(), zT = new V3(), zL = new V3(), zR = new V3(), zC = new V3(), shP = new V3(), elP = new V3(), hdP = new V3(), tipP = new V3(), hipP = new V3();
+    const yol = (a, b, c, s, out) => (s < 0.5 ? out.lerpVectors(a, b, s * 2) : out.lerpVectors(b, c, (s - 0.5) * 2));
+    const zarYaz = (k, v) => { zarPos[k * 3] = v.x; zarPos[k * 3 + 1] = v.y; zarPos[k * 3 + 2] = v.z; };
+    const legP = { sol: [new V3(), new V3(), new V3()], sag: [new V3(), new V3(), new V3()] };
+    function zarGuncelle(dt, t, d) {
+      const acik = d === 'suzul';
+      const hiz = acik ? 1 / 0.25 : 1 / 0.2;
+      zk += kisitla((acik ? 1 : 0) - zk, -dt * hiz, dt * hiz);
+      if (zOnce === 'suzul' && !acik && zk > 0.3) { // kapanış: kenardan damlalar
+        for (const m of zDam) {
+          const k = (Math.random() < 0.5 ? 0 : ZT) + (ZN - Math.floor(Math.random() * 4)) * (ZM + 1) + ZM;
+          m.position.set(zarPos[k * 3], zarPos[k * 3 + 1], zarPos[k * 3 + 2]);
+          m.userData.v.set((Math.random() - 0.5) * 1.2, -0.5 - Math.random(), (Math.random() - 0.5) * 1.2);
+          m.userData.o = 0; m.scale.setScalar(0.04 + Math.random() * 0.05); m.visible = true;
+        }
+      }
+      zOnce = d;
+      for (const m of zDam) if (m.visible) { const v = m.userData.v; v.y -= 12 * dt; m.position.addScaledVector(v, dt); m.userData.o += dt; if (m.userData.o > 1.1) m.visible = false; }
+      const e = yumus(0, 1, zk);
+      zarMesh.visible = zk > 0.004;
+      if (zarMesh.visible) {
+        const e2 = 0.3 + 0.7 * e, ke = e; // dev ölçeği kemiklerin dünya konumlarında zaten var
+        for (let q = 0; q < 2; q++) {
+          const T = q ? K.sag : K.sol;
+          bw(T.ust, shP); bw(T.on, elP); bw(T.el, hdP); tipP.copy(hdP).addScaledVector(d2.subVectors(hdP, elP).normalize(), 0.14);
+          bw(T.uyluk, hipP);
+          for (let i = 0; i <= ZN; i++) {
+            const s = i / ZN * e2;
+            yol(shP, elP, tipP, s, zA); zT.lerpVectors(hipP, tipP, s).addScaledVector(upV, -0.28 * (1 - s));
+            for (let j = 0; j <= ZM; j++) { const v = j / ZM; zarYaz(q * ZT + i * (ZM + 1) + j, zC.lerpVectors(zA, zT, v * ke)); }
+          }
+        }
+        for (const ad of ['sol', 'sag']) { const T = K[ad], L = legP[ad]; bw(T.uyluk, L[0]); bw(T.baldir, L[1]); bw(T.ayak, L[2]); }
+        for (let i = 0; i <= ZN; i++) {
+          const s = i / ZN * e2;
+          yol(legP.sol[0], legP.sol[1], legP.sol[2], s, zL); yol(legP.sag[0], legP.sag[1], legP.sag[2], s, zR); zC.addVectors(zL, zR).multiplyScalar(0.5);
+          for (let j = 0; j <= ZM; j++) {
+            const v = j / ZM, k = 2 * ZT + i * (ZM + 1) + j;
+            if (v < 0.5) zarYaz(k, zA.lerpVectors(zL, zC, 2 * v * e)); else zarYaz(k, zA.lerpVectors(zR, zC, 2 * (1 - v) * e));
+          }
+        }
+        zarGeo.attributes.position.needsUpdate = true; zarGeo.computeVertexNormals(); zarGeo.attributes.normal.needsUpdate = true;
+        zarMat.uniforms.uT.value = t; zarMat.uniforms.uDir.value.copy(fwd).negate();
+        zarMat.uniforms.uBill.value = 0.08 + 0.06 * devK; zarMat.uniforms.uAmp.value = 1 + 0.5 * devK;
+        zarMat.uniforms.uDev.value = devK; zarMat.uniforms.uA.value = yumus(0, 0.5, zk);
+      }
+      // hız izi (dalış)
+      izK += ((d === 'dalis' ? 1 : 0) - izK) * (1 - Math.exp(-dt * (d === 'dalis' ? 14 : 8)));
+      izMesh.visible = izK > 0.02;
+      if (izMesh.visible) {
+        bw(kb('hips'), hipP);
+        const L = (1.4 + sp * 0.12) * izK;
+        for (let i = 0; i < 6; i++) {
+          const a = i / 6 * Math.PI * 2 + t * 2, r = 0.22 + 0.06 * (i % 2), h = 0.15 + 0.3 * (i % 3);
+          zA.copy(hipP).addScaledVector(yanSol, Math.cos(a) * r).addScaledVector(fwd, Math.sin(a) * r).addScaledVector(upV, h);
+          zT.copy(zA).addScaledVector(upV, -L * (0.6 + 0.4 * ((i * 37) % 10) / 10));
+          izPos.set([zA.x, zA.y, zA.z, zT.x, zT.y, zT.z], i * 6);
+        }
+        izGeo2.attributes.position.needsUpdate = true; izMat2.opacity = 0.9 * izK;
       }
     }
 
@@ -1020,8 +1191,8 @@ export function kur(G) {
   } catch (e) { console.warn('[ZIFIR] GLTFLoader hata:', e); }
 
   // ---------- test sürücüsü ----------
-  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan', 'duvarKos'];
-  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0], duvarKos: [0, 6] };
+  const SIRA = ['dur', 'yuru', 'kos', 'zipla', 'dus', 'sallan', 'duvar', 'zip', 'yumruk', 'kamci', 'hasar', 'dogus', 'sapan', 'duvarKos', 'suzul', 'dalis'];
+  const HIZ = { dur: [0, 0], yuru: [5, 0], kos: [15, 0], zipla: [3, 7], dus: [3, -14], sallan: [17, 3], duvar: [0, 3], zip: [26, 0], yumruk: [0, 0], kamci: [0, 0], hasar: [0, 0], dogus: [0, 0], sapan: [0, 0], duvarKos: [0, 6], suzul: [11, -2], dalis: [12, -22] };
   function testSur(dt) {
     const sabit = QS.get('durum');
     const idx = sabit ? SIRA.indexOf(sabit) : Math.floor(G.t) % SIRA.length;
@@ -1037,7 +1208,7 @@ export function kur(G) {
     if (d === 'duvar') grup.position.y += 0;
     // her zaman bir dokunaç göster
     const el = elNoktasi('sag');
-    if (!QS.has('tensiz') && d !== 'sapan' && d !== 'sallan') dokunac('sag', el, new V3(grup.position.x + 2.2, 5.5, grup.position.z + 3));
+    if (!QS.has('tensiz') && d !== 'sapan' && d !== 'sallan' && d !== 'suzul' && d !== 'dalis') dokunac('sag', el, new V3(grup.position.x + 2.2, 5.5, grup.position.z + 3));
     if (d === 'kamci') dokunac('kamci', elNoktasi('sag'), new V3(grup.position.x - 0.4, 1.2, grup.position.z + 4)); else dokunac('kamci', null, null);
     if (d === 'sapan') { dokunac('sag', elNoktasi('sag'), new V3(grup.position.x - 4, 3, grup.position.z + 5)); dokunac('sol', elNoktasi('sol'), new V3(grup.position.x + 4, 3, grup.position.z + 5)); }
     else if (d === 'sallan') { const sl = QS.get('el') === 'sol'; ayarla({ el: sl ? 'sol' : 'sag' }); dokunac(sl ? 'sol' : 'sag', elNoktasi(sl ? 'sol' : 'sag'), new V3(grup.position.x + (sl ? 2.2 : -2.2), 6, grup.position.z + 3)); dokunac(sl ? 'sag' : 'sol', null, null); }
@@ -1079,14 +1250,14 @@ export function kur(G) {
     gozMat.emissiveIntensity = 0.45 + 1.0 * devK;
     gozler.forEach((g, i) => {
       const bx = g.userData.bx ?? 1, sg = i ? -1 : 1;
-      g.scale.set(bx * (1 + 0.55 * devK), bl * (1 + 1.0 * devK), g.scale.z);
+      g.scale.set(bx * (1 + 0.55 * devK), (g.userData.by ?? 1) * bl * (1 + 0.35 * devK), g.scale.z);
       g.rotation.z = -sg * 0.32 * devK;
       const h = g.userData.hale; if (h) { h.material.opacity = 0.7 * devK; h.scale.setScalar(1.5 + 0.25 * Math.sin(t * 3 + i)); }
     });
 
     // dev yayı
     const hedefS = son.dev ? dDevS : 1;
-    devV += ((hedefS - devS) * 90 - devV * 9) * dt; devS += devV * dt;
+    devS += (hedefS - devS) * (1 - Math.exp(-dt * 7)); // sınırlı/monoton: ani kare süresi dev ölçeğini ters çeviremez
     devK += ((son.dev ? 1 : 0) - devK) * (1 - Math.exp(-dt * (son.dev ? 3 : 6)));
     ct = kisitla(ct + (son.dev ? dt / 0.8 : -dt / 0.6), 0, 1);
     if (QS.has('ctsabit')) ct = +QS.get('ctsabit');
@@ -1137,6 +1308,7 @@ export function kur(G) {
     hale.material.color.copy(tasMat.emissive); hale.material.opacity = 0.16 + 0.2 * bt; hale.scale.setScalar(0.42 + 0.14 * bt + 0.2 * devK + 0.5 * bitFlas + 0.9 * donP); hale2.scale.copy(hale.scale); hale2.material.color.copy(hale.material.color); hale2.material.opacity = hale.material.opacity; tas2.scale.copy(tas.scale); tas2.scale.multiplyScalar(0.8);
 
     if (gc) gc.guncelle(dt, t);
+    yedekZarGuncelle(dt, d);
     sirtGuncelle(t);
     dokunacGuncelle(dt, t);
 
@@ -1152,7 +1324,7 @@ export function kur(G) {
       const aci = (parseFloat(QS.get('aci')) || 0) * Math.PI / 180, mes = parseFloat(QS.get('mes')) || 4;
       const c = tmpV.copy(grup.position); c.y += (parseFloat(QS.get('bak')) || 1.0) * (son.dev && !QS.has('bak') ? 1.9 : 1);
       const ox = 2.1, oz = 3.2;
-      G.kamera.position.set(c.x + (ox * Math.cos(aci) + oz * Math.sin(aci)) * mes / 3.93, c.y + 0.9 * mes / 3.93, c.z + (oz * Math.cos(aci) - ox * Math.sin(aci)) * mes / 3.93);
+      G.kamera.position.set(c.x + (ox * Math.cos(aci) + oz * Math.sin(aci)) * mes / 3.93, c.y + 0.9 * mes / 3.93 + (parseFloat(QS.get('yuk')) || 0), c.z + (oz * Math.cos(aci) - ox * Math.sin(aci)) * mes / 3.93);
       G.kamera.lookAt(c);
     }
   };

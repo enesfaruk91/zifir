@@ -147,19 +147,35 @@ console.log('[ZIFIR] yüklü modüller:', Object.keys(moduller).join(','));
 
 // ---- kalite ayarı ----
 const KADEME = ['dusuk', 'orta', 'yuksek'], AD = { dusuk: 'Düşük', orta: 'Orta', yuksek: 'Yüksek' };
+let boyutBekliyor = false, sonGen = innerWidth, sonYuk = innerHeight, sonPr = 1, sonKalite = null;
 function boyutla() {
-  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
-  { const pr = renderer.getPixelRatio(); gtao.setSize(Math.ceil(innerWidth * pr / 2), Math.ceil(innerHeight * pr / 2)); }
-  if (G.kalite === 'dusuk') { const pr = renderer.getPixelRatio(); bloom.setSize(Math.ceil(innerWidth * pr / 2), Math.ceil(innerHeight * pr / 2)); }
+  // Canvas boyutu değiştirmek mevcut kareyi temizler. Resize/kalite isteğini
+  // bir sonraki çizimin başında uygula; olay ile RAF arasında siyah kare gösterme.
+  boyutBekliyor = true;
+}
+function boyutUygula() {
+  if (!boyutBekliyor) return;
+  boyutBekliyor = false;
+  const gen = Math.max(1, innerWidth), yuk = Math.max(1, innerHeight);
+  const pr = G.kalite === 'dusuk' ? 0.75 : G.kalite === 'orta' ? 1 : Math.min(devicePixelRatio, 1.5);
+  const degisti = gen !== sonGen || yuk !== sonYuk, oranDegisti = pr !== sonPr;
+  if (!degisti && !oranDegisti && sonKalite === G.kalite) return;
+  if (oranDegisti) { renderer.setPixelRatio(pr); composer.setPixelRatio(pr); }
+  if (degisti) { renderer.setSize(gen, yuk); composer.setSize(gen, yuk); }
+  gtao.setSize(Math.ceil(gen * pr / 2), Math.ceil(yuk * pr / 2));
+  const bloomOlcek = G.kalite === 'dusuk' ? 0.5 : 1;
+  bloom.setSize(Math.ceil(gen * pr * bloomOlcek), Math.ceil(yuk * pr * bloomOlcek));
+  kamera.aspect = gen / yuk; kamera.updateProjectionMatrix();
+  sonGen = gen; sonYuk = yuk; sonPr = pr; sonKalite = G.kalite;
 }
 G.kaliteAd = AD;
 G.kaliteAyarla = function (ad, kaydet = true) {
   if (!KADEME.includes(ad)) return;
+  if (G.kalite === ad) return;
   G.kalite = ad;
   if (kaydet) { try { localStorage.setItem('zifir_kalite', ad); } catch (e) {} }
-  const pr = ad === 'dusuk' ? 0.75 : ad === 'orta' ? 1 : Math.min(devicePixelRatio, 1.5);
-  renderer.setPixelRatio(pr);
   const golge = ad === 'dusuk' ? 0 : ad === 'orta' ? 1024 : 2048;
+  const golgeDegisti = renderer.shadowMap.enabled !== (golge > 0);
   renderer.shadowMap.enabled = golge > 0;
   sahne.traverse(o => {
     if (o.isLight && o.castShadow && o.shadow) {
@@ -167,7 +183,11 @@ G.kaliteAyarla = function (ad, kaydet = true) {
     }
   });
   { const an = ad === 'dusuk' ? 1 : Math.min(4, renderer.capabilities.getMaxAnisotropy()); const gor = new Set(); sahne.traverse(o => { if (o.material) for (const m of [].concat(o.material)) for (const k of ['map', 'emissiveMap', 'roughnessMap']) if (m[k] && !gor.has(m[k])) { gor.add(m[k]); m[k].anisotropy = an; } }); }
-  sahne.traverse(o => { if (o.material) { for (const m of [].concat(o.material)) m.needsUpdate = true; } });
+  if (golgeDegisti) {
+    const malzemeler = new Set();
+    sahne.traverse(o => { if (o.material) for (const m of [].concat(o.material)) malzemeler.add(m); });
+    for (const m of malzemeler) m.needsUpdate = true;
+  }
   gtao.enabled = ad === 'yuksek'; smaa.enabled = ad !== 'dusuk';
   gradePass.uniforms.grenGuc.value = ad === 'dusuk' ? 0 : 0.025;
   boyutla();
@@ -177,10 +197,11 @@ let k0 = 'orta'; try { const v = localStorage.getItem('zifir_kalite'); if (KADEM
 G.kaliteAyarla(k0, false);
 let fpsT = 0, fpsN = 0;
 
-addEventListener('resize', () => { kamera.aspect = innerWidth / innerHeight; kamera.updateProjectionMatrix(); boyutla(); });
+addEventListener('resize', boyutla);
 
 function kare() {
-  const gdt = Math.min(G.saat.getDelta(), 0.05);
+  boyutUygula();
+  const gecen = G.saat.getDelta(), gdt = Math.min(gecen, 0.05);
   renderer.toneMappingExposure = (G.pozTaban || 1.15) * (G.ayar?.parlaklik || 1);
   efektGuncelle(gdt);
   const dt = gdt * G.zamanOlcek;
@@ -194,7 +215,7 @@ function kare() {
   composer.render();
   if (sarsildi) { kamera.position.copy(_p); kamera.quaternion.copy(_q); }
   if (G.durum === 'oyun' && !test) {
-    fpsT += gdt; fpsN++;
+    fpsT += gecen; fpsN++;
     if (fpsT >= 3) {
       const fps = fpsN / fpsT; fpsT = 0; fpsN = 0;
       const i = KADEME.indexOf(G.kalite);

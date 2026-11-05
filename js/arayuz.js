@@ -232,13 +232,14 @@ const KONTROLLER = [
   ['<kbd class="tur">Fare</kbd>', 'Kamerayı döndür'],
   ['bol'],
   ['<kbd class="tur">Sol tık</kbd>', 'En yakın hedefe saldır · KOMBO yap'],
-  ['<kbd class="tur">Sağ tık</kbd> basılı', 'Ağ at ve salın (eller sırayla sol-sağ), bırak: fırla'],
+  ['<kbd class="tur">Sağ tık</kbd> basılı', 'Bakış yönüne ağ at ve salın · bırak: fırla'],
   ['<kbd class="tur">Sağ tık</kbd> + <kbd>Space</kbd>', 'Sapan'],
   ['<kbd>E</kbd>', 'Çatıya / hedefe çekil'],
   ['<kbd>F</kbd>', 'Dokunaç kamçısı'],
   ['<kbd>Fare tekerleği</kbd>', 'Hedef değiştir'],
   ['<kbd>Space</kbd>', 'Zıpla (havada 2. zıplama)'],
-  ['<kbd>Shift</kbd>', 'Koş · duvara tırman'],
+  ['<kbd>Shift</kbd>', 'Koş · duvara tırman · havada süzül'],
+  ['<kbd>C</kbd> / <kbd>Ctrl</kbd>', 'Dalış · klavye kilidi yoksa C kullan'],
   ['<kbd>Q</kbd>', 'DEV ZİFİR (güç dolunca)'],
   ['bol'],
   ['<kbd>Esc</kbd>', 'Duraklat'],
@@ -301,8 +302,8 @@ function secSes(onay) { G_.ses?.cal?.('arayuz_sec'); bip(onay ? 880 : 620); }
 
 // ---------- menü ----------
 const OGELER = {
-  ana: [['OYNA', 'oyna'], ['AYARLAR', 'ayar'], ['KONTROLLER', 'kontrol'], ['BAŞARIMLAR', 'basarim'], ['YAPIMCILAR', 'yapim']],
-  dur: [['DEVAM', 'devam'], ['AYARLAR', 'ayar'], ['KONTROLLER', 'kontrol'], ['ANA MENÜ', 'ana']],
+  ana: [['OYNA', 'oyna'], ['AYARLAR', 'ayar'], ['KONTROLLER', 'kontrol'], ['BAŞARIMLAR', 'basarim'], ['YAPIMCILAR', 'yapim'], ['ÇIKIŞ', 'cikis']],
+  dur: [['DEVAM', 'devam'], ['AYARLAR', 'ayar'], ['KONTROLLER', 'kontrol'], ['ANA MENÜ', 'ana'], ['ÇIKIŞ', 'cikis']],
 };
 function menuKur(tur) {
   menuTur = tur; panel = null; secili = 0;
@@ -330,6 +331,7 @@ function etkinles(i) {
   const k = menuOge[i].dataset.k; secSes(true);
   if (k === 'oyna') oyunBaslat();
   else if (k === 'devam') devam();
+  else if (k === 'cikis') oyundanCik();
   else if (k === 'ana') { G_.durum = 'menu'; menuKur('ana'); }
   else { panel = k; psecili = 0; panelCiz(); sec(i, true); }
 }
@@ -696,6 +698,18 @@ function ucus(metin, konum) {
   if (konum && G_.kamera) { const s = ekranaCevir(konum); if (!s.arka) { x = s.x; y = s.y; } }
   const u = el('div', 'uc', '', e.hud); u.textContent = metin; u.style.left = x + 'px'; u.style.top = y + 'px';
   setTimeout(() => u.remove(), 1400);
+}
+function oyundanCik() {
+  G_.durum = 'menu';
+  G_.girdi?.serbestBirak?.();
+  G_.ses?.muzik?.(false);
+  window.close();
+  // Normal tarayıcı sekmesi kapatmaya izin vermezse görünür çıkış yolu sun.
+  setTimeout(() => {
+    menuKur('ana');
+    G_.arayuz?.mesaj?.(navigator.maxTouchPoints > 0 ? 'Oyun durdu. Bu sekmeyi Chrome menüsünden kapatabilirsin.' : 'Pencereyi kapatmak için Alt + F4 tuşlarına bas.', 8);
+    document.exitFullscreen?.()?.catch?.(() => {});
+  }, 250);
 }
 function oyunBaslat() { G_.durum = 'oyun'; G_.girdi?.kilitle?.(); G_.ses?.muzik?.(true); }
 function devam() { G_.durum = 'oyun'; G_.girdi?.kilitle?.(); }

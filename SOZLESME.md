@@ -74,7 +74,7 @@ G.girdi = {
 Tuşlar (GÜNCEL, 05.11 kullanıcı isteği): WASD yürü · Fare bak · Space zıpla (havada 2. zıplama) ·
 **Sol tık = SALDIRI**: nişana jöle mermisi at (yakında robot varsa yumruk) · **Sağ tık BASILI = dokunaçla
 sallan, bırak = fırla** · **E = çekil (zip)** · F = kamçı (yakındaki robotu çek) · Shift = koş/duvara
-tırman · Q = DEV ZİFİR · Esc = duraklat · M = ses.
+tırman/havada süzül · C/Ctrl = dalış (Ctrl için tam ekran klavye kilidi) · Q = DEV ZİFİR · Esc = duraklat · M = ses.
 Olay: oyuncu `emit('atis', {baslangic: Vector3, yon: Vector3 (birim), guc, hedef: düşman|null})`;
 mermi uçuşu, görüntüsü ve isabet dusman.js'te. İsabette dusman `emit('isabet', {konum, tur})`.
 
@@ -105,7 +105,7 @@ Işık: hemisphere + ay ışığı (gölgeli, oyuncuyu takip eden gölge kameras
 G.kahraman = {
   grup: THREE.Group,           // sahneye eklenmiş; oyuncu.js bunun position/quaternion'ını yönetir
   ayarla({ durum, hiz: Vector3, yerde, dev, dt }),
-     // durum: 'dur'|'yuru'|'kos'|'zipla'|'dus'|'sallan'|'duvar'|'zip'|'yumruk'|'kamci'|'hasar'|'dogus'
+     // durum: 'dur'|'yuru'|'kos'|'zipla'|'dus'|'sallan'|'duvar'|'zip'|'yumruk'|'kamci'|'hasar'|'dogus'|'suzul'|'dalis'
   dokunac(ad, baslangicDunya: Vector3|null, bitisDunya: Vector3|null),
      // ad 'sol'|'sag'|'kamci'; null = gizle. Kalın, hafif dalgalı, parlak kara tüp (TubeGeometry
      // her kare yeniden değil: sabit segmentli eğri, noktaları güncelle) + ucunda yapışma sıçraması
@@ -197,3 +197,10 @@ G.efekt = {
 ### 6.3 Olaylar (ek)
 'kombo' {sayi}, 'bitirici' {konum}, 'kacis' (zamanında kaçınma), 'mukemmelBirakis' (salınımın tepe noktasında bırakma),
 'cek' (yukarı ağ çekişi başladı), 'konus' (çatıya konuş).
+
+## 7. Devam işleri entegrasyonu (05.11.2026)
+- Ağ: kamera merkez ışını ≥6 m yüksek isabette tam nokta; aksi halde 25° görünür bina yardımı, yoksa bakış yönünde gökyüzü ankrajı. Sağ tık gösterilmiş önizlemeyi kullanır; el ankraj tarafındadır.
+- `suzul` / `dalis`: Shift / C (veya Ctrl); canlı jöle kanat ve dalış izi.
+- `G.girdi.klavyeKilitli`: gerçek tam ekran ve Keyboard Lock başarılıysa true. `serbestBirak()`: tuş/fare/klavye kilidini bırakır. Esc duraklatmada kilit çözülür.
+- Ana menü ve duraklatmada ÇIKIŞ: oyunun Chrome app penceresini kapatır. Normal sekmede tarayıcı engellerse Alt+F4 mesajı gösterir. Başlatıcı yalnız oyun profiline `--allow-scripts-to-close-windows` verir.
+- Ek doğrulama: `flock /tmp/zifir_test.lock python3 test/test_devam.py`; `flock /tmp/zifir_test.lock python3 test/test_pencere.py`.

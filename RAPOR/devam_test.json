@@ -1,0 +1,177 @@
+[
+  {
+    "ad": "Merkez ışını ve sağ tık, hız -25",
+    "ok": true,
+    "detay": {
+      "oniz": [
+        8.273100970238042,
+        76.01835218809421,
+        -24.17231139237126
+      ],
+      "ankraj": [
+        8.273100970238042,
+        76.01835218809421,
+        -24.17231139237126
+      ],
+      "yon": [
+        0.2182178902359924,
+        0.4364357804719848,
+        -0.8728715609439696
+      ]
+    }
+  },
+  {
+    "ad": "Merkez ışını ve sağ tık, hız 25",
+    "ok": true,
+    "detay": {
+      "oniz": [
+        8.302151346281425,
+        76.01835218809421,
+        -24.17231139237126
+      ],
+      "ankraj": [
+        8.302151346281425,
+        76.01835218809421,
+        -24.17231139237126
+      ],
+      "yon": [
+        0.2182178902359924,
+        0.4364357804719848,
+        -0.8728715609439696
+      ]
+    }
+  },
+  {
+    "ad": "Ankraj tarafına göre el -1",
+    "ok": true,
+    "detay": {
+      "el": "sol",
+      "ankraj": [
+        -13.638690166235207,
+        75.10227549555223,
+        -22.62849651661989
+      ]
+    }
+  },
+  {
+    "ad": "Ankraj tarafına göre el 1",
+    "ok": true,
+    "detay": {
+      "el": "sag",
+      "ankraj": [
+        14.938690166235208,
+        75.10227549555223,
+        -22.62849651661989
+      ]
+    }
+  },
+  {
+    "ad": "25 derece koni uygun binayı seçer",
+    "ok": true,
+    "detay": {
+      "nokta": [
+        7.65,
+        65.98263888888889,
+        -28.05111618414947
+      ],
+      "aci": 14.35312100801411
+    }
+  },
+  {
+    "ad": "Gökyüzü önizlemesi = ankraj",
+    "ok": true,
+    "detay": {
+      "oniz": [
+        -1.1702223760422603,
+        83.29479166666667,
+        -24.972596572855817
+      ],
+      "ankraj": [
+        -1.1702223760422603,
+        83.29479166666667,
+        -24.972596572855817
+      ]
+    }
+  },
+  {
+    "ad": "Uçuş fiziği suzul",
+    "ok": true,
+    "detay": {
+      "durum": "suzul",
+      "hiz": [
+        14.426978563956245,
+        -3.738764987615089,
+        -4.548808868398462
+      ]
+    }
+  },
+  {
+    "ad": "Uçuş fiziği dalis",
+    "ok": true,
+    "detay": {
+      "durum": "dalis",
+      "hiz": [
+        11.349306602699132,
+        -27.62499999999998,
+        0
+      ]
+    }
+  },
+  {
+    "ad": "Gerçek model sonlu ve doğru görünürlük suzul",
+    "ok": true,
+    "detay": {
+      "bozuk": 0,
+      "gorunen": 500,
+      "zar": true,
+      "iz": false
+    }
+  },
+  {
+    "ad": "Gerçek model sonlu ve doğru görünürlük dalis",
+    "ok": true,
+    "detay": {
+      "bozuk": 0,
+      "gorunen": 507,
+      "zar": false,
+      "iz": true
+    }
+  },
+  {
+    "ad": "Gerçek model sonlu ve doğru görünürlük dur",
+    "ok": true,
+    "detay": {
+      "bozuk": 0,
+      "gorunen": 499,
+      "zar": false,
+      "iz": false
+    }
+  },
+  {
+    "ad": "Ctrl+W preventDefault repeat=false",
+    "ok": true,
+    "detay": {
+      "defaultPrevented": true
+    }
+  },
+  {
+    "ad": "Ctrl+W preventDefault repeat=true",
+    "ok": true,
+    "detay": {
+      "defaultPrevented": true
+    }
+  },
+  {
+    "ad": "Ana menü Çıkış kapatmayı çağırır",
+    "ok": true,
+    "detay": {
+      "buton": "ÇIKIŞ",
+      "kapat": 1
+    }
+  },
+  {
+    "ad": "Oyun hata listesi boş",
+    "ok": true,
+    "detay": []
+  }
+]

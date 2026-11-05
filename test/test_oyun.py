@@ -437,17 +437,6 @@ def js_test_cekis() -> str:
         const b = uzun[(kk * 7) % uzun.length], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4]; kk++;
         const bx = b.x + d[0] * (b.gx / 2 + 15), bz = b.z + d[1] * (b.gz / 2 + 15);
         const yaw = Math.atan2(d[0], d[1]) + (n % 3 - 1) * 0.3;
-        // B için uygun bakış var mı (nişan = BU binanın çatı kenarı)? Yoksa (komşu bina önde vb.) bu bina atlanır.
-        let uygunPit = null;
-        for (const pit of [0.4, 0.3, 0.5, 0.2, 0.6, 0.7]) {
-          G.oyuncu.isinla(new T.Vector3(bx, b.h - 10, bz)); G.oyuncu.yaw = yaw; G.oyuncu.pitch = pit;
-          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
-          O.guncelle(G, 1 / 60);
-          const nn = G.oyuncu.nisanNokta;
-          if (G.oyuncu.nisanVar && nn && Math.abs(nn.y - b.h) < 1.5 && nn.x > b.x - b.gx / 2 - 1 && nn.x < b.x + b.gx / 2 + 1 && nn.z > b.z - b.gz / 2 - 1 && nn.z < b.z + b.gz / 2 + 1) { uygunPit = pit; break; }
-        }
-        if (uygunPit === null) { atlanan++; continue; }
-        n++; sonuc.atlanan = atlanan;
         // A) yerden sağ tık: yüksek ankraj ve 'sallan' durumu
         G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
         G.oyuncu.yaw = yaw; G.oyuncu.pitch = 0.15;
@@ -461,16 +450,26 @@ def js_test_cekis() -> str:
           if (p.ankraj) sonuc.ankrajKare++;
           if (p.durum === 'sallan') sallan = true;
           if (p.ankraj && p.ankraj.y >= p.konum.y + 10) yuksek = true;
-          if (i < 10 && p.nisanVar && p.nisanNokta && p.nisanNokta.y >= 10) nisan = true;
+          if (i < 10 && p.nisanVar && p.nisanNokta && p.nisanNokta.y >= p.konum.y + 5.99) nisan = true;
         }
-        // B) E ile çatıya çekilme: çatı kenarının 10 m altından, bakış çatının üstünden geçerek E (hedef çatı kenarı)
-        G.oyuncu.isinla(new T.Vector3(bx, b.h - 10, bz));
-        G.oyuncu.yaw = yaw; G.oyuncu.pitch = uygunPit;
+        // B) Görünen önizlemeyi seç; aynı konum/bakıştan hemen sonraki karede E.
+        // A'dan önce seçilen pitch'i yeniden kullanmak, fizik ve kamera ilerlediği
+        // için başka cephe/gökyüzü hedefiyle zip başlatabiliyordu.
+        let secilenNisan = null;
+        for (const pit of [0.4, 0.3, 0.5, 0.2, 0.6, 0.7]) {
+          G.oyuncu.isinla(new T.Vector3(bx, b.h - 10, bz)); G.oyuncu.yaw = yaw; G.oyuncu.pitch = pit;
+          tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
+          O.guncelle(G, 1 / 60);
+          const nn = G.oyuncu.nisanNokta;
+          if (G.oyuncu.nisanVar && nn && nn.y >= b.h - 5.5 && nn.y <= b.h + 1.5 && nn.x > b.x - b.gx / 2 - 0.1 && nn.x < b.x + b.gx / 2 + 0.1 && nn.z > b.z - b.gz / 2 - 0.1 && nn.z < b.z + b.gz / 2 + 0.1) { secilenNisan = nn.clone(); break; }
+        }
+        if (!secilenNisan) { atlanan++; continue; }
+        n++; sonuc.atlanan = atlanan;
         let zip = false, indi = -1;
         let maxY = -Infinity, zipKare = 0, sonY = 0, sonDurum = null;
         for (let i = 0; i < 480; i++) {
           tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
-          if (i === 2) { tuslar.add('KeyE'); yeni.add('KeyE'); }
+          if (i === 0) { tuslar.add('KeyE'); yeni.add('KeyE'); }
           O.guncelle(G, 1 / 60);
           const p = G.oyuncu;
           if (p.durum === 'zip') { zip = true; zipKare++; }
@@ -484,7 +483,7 @@ def js_test_cekis() -> str:
         if (nisan) sonuc.nisanVar++;
         if (indi >= 0) { sonuc.catida++; sonuc.enGec = Math.max(sonuc.enGec, indi / 60); }
         sonuc.ayrinti.push([+b.h.toFixed(0), sallan, yuksek, zip, indi,
-                            +(Number.isFinite(maxY) ? maxY : 0).toFixed(1), +sonY.toFixed(1), sonDurum, zipKare]);
+                            +(Number.isFinite(maxY) ? maxY : 0).toFixed(1), +sonY.toFixed(1), sonDurum, zipKare, secilenNisan.toArray()]);
       }
       G.girdi = eskiGirdi; return sonuc;
     })()"""
@@ -1355,7 +1354,7 @@ def main() -> int:
                    f"yüksek ankraj={t13.get('yuksekAnkraj')}, zip={t13.get('zipGordu')}, "
                    f"çatıya inen={t13.get('catida')}, nişan yüksek hedefte={t13.get('nisanVar')}, "
                    f"en geç iniş={t13.get('enGec', 0):.1f} sn; durumlar={t13.get('durumlar')}, "
-                   f"ankrajlı kare={t13.get('ankrajKare')}, çatı hedefi olmadığı için atlanan bina={t13.get('atlanan', 0)}; [bina_h, sallan, yüksekAnkraj, zip, iniş_kare, maxY, sonY, sonDurum, zipKare]={t13.get('ayrinti')}")
+                   f"ankrajlı kare={t13.get('ankrajKare')}, çatı hedefi olmadığı için atlanan bina={t13.get('atlanan', 0)}; [bina_h, sallan, yüksekAnkraj, zip, iniş_kare, maxY, sonY, sonDurum, zipKare, secilenNisan]={t13.get('ayrinti')}")
         ekle("Yerden sağ tık yüksek ankrajla sallanma başlatıyor; E yüksek çatıya çekiyor ve nişan yüksek hedefi gösteriyor",
              gecti13, detay13, "oyuncu.js + sehir.js")
 
@@ -1586,6 +1585,7 @@ def main() -> int:
     cizgiler.append("- Zamanlamaya duyarlı beklemeler oyun saati `G.t` üzerinden yapılır (kahraman GLB ≤15, düşman ≤30, küre ≤3, yeniden doğuş ≤4, efekt ≤1, eğitim ≤10 oyun-sn). Oyun saati üst sınırı aşarsa ilgili kontrol KALDI olur; duvar saati yalnız güvenlik sınırıdır.")
     cizgiler.append("- Kare süresi kontrolü 80x45 çizim tamponunda (composer 160x90), yalnız temel RenderPass ve gölge kapalı ölçülür; swiftshader yazılım render'ı gerçek GPU performansını yansıtmaz. 5 oyun-sn performans bilgisi `renderer.info.render.calls/triangles` kare ortalamasıdır.")
     cizgiler.append("- swiftshader + eşzamanlı ajan yükü altında (geliştirme sırasında 0.2-0.8 fps ölçüldü; oyun saati dt=0.05 sınırıyla ilerler) yalnız çizim yükü azaltıldı: 640x360 pencere, composer 160x90 / 80x45 tampon, yalnız RenderPass, bloom ve gölge kapalı; gerekirse render çağrısı durduruldu. Fizik ve görev mantığı aynı `guncelle` döngüsüyle çalıştı.")
+    cizgiler.append("- Çekiş kontrolü güncel bakış sözleşmesini kullanır: nişan oyuncunun en az 6 m üstünde olmalıdır; çatı son 5,5 m cephesinde gerçekten görülen önizleme seçilir ve konum/bakış yeniden kurulmadan hemen sonraki kare E basılır. Altı ayrı örnekte gerçek çatıya iniş şartı korunur; seçilen nişan koordinatları ayrıntıya yazılır.")
     cizgiler.append("- Test demosu `girdi.js` içinde `?test=1` sırasında ilk 6 saniye çalışır.")
     cizgiler.append("- Eğitim kontrolü ana sayfa kontrollerinden sonra `?test=1&egitim=1` adresine gezinir; ana sayfanın konsol kayıtları gezinmeden önce saklanır ve eğitim sayfasınınkilerle birleştirilir.")
     cizgiler.append("- Konsol taraması tüm koşu boyunca sayfa `console.error/warn`, `window.__ZIFIR_HATALAR`, CDP istisnaları ve Chrome stderr üzerinden 'Uncaught' / 'SHADER' / 'is not defined' için yapıldı.")
