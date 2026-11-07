@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { haritaKur, kur_h as _haritaH } from './harita.js';
 
 const P = 57;            // sokak aralığı (m)
 const KN = 7;            // yollar k = -7..7
@@ -349,6 +350,12 @@ export function kur(G) {
   const qs = new URLSearchParams(location.search);
   const sehirkam = qs.get('sehirkam');
   const sahne = G.sahne;
+  // Varsayılan: gerçek harita (Basınevleri, OSM). ?harita=eski → eski prosedürel şehir (yedek).
+  if (G.harita && G.harita.veri) {
+    haritaKur(G, G.harita.veri, G.harita.katDuz || {}, { doku, modelYukle, Kume, kutuModel, silindirModel, GLSL_HASH, tl: _tl, aniso: _aniso, huzmeDokusu });
+    kur._harita = true;
+    return;
+  }
 
   // atmosfer
   const sisRenk = new THREE.Color(0x161c2a);
@@ -1171,6 +1178,7 @@ void main(){
 const _ld = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(), _c = new THREE.Vector3();
 const _yukari = new THREE.Vector3(0, 1, 0);
 export function guncelle(G, dt) {
+  if (kur._harita) { _haritaH.guncelle?.(G, dt); return; }
   const d = kur._d; if (!d) return;
   const t = G.t;
   d.kubbe.material.uniforms.uT.value = t;
@@ -1231,7 +1239,7 @@ const _pm = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pp = new THREE.V
 const _EY = new THREE.Vector3(0, 1, 0);
 
 // GLB'yi tek (vertexColors) geometriye indir: {govde, isik, ...}
-async function modelYukle(url, o = {}) {
+export async function modelYukle(url, o = {}) {
   const gltf = await _gl.loadAsync(url);
   gltf.scene.updateMatrixWorld(true);
   const gv = [], ig = [], by = [], cm = [];
@@ -1281,7 +1289,7 @@ async function modelYukle(url, o = {}) {
 }
 
 // Procedürel küçük model: parçalar [w,h,d, x,y,z, renk, isik?]
-function kutuModel(parcalar) {
+export function kutuModel(parcalar) {
   const gv = [], ig = [];
   for (const [w, h, d, x, y, z, renk, isik] of parcalar) {
     const g = new THREE.BoxGeometry(w, h, d).translate(x, y, z).toNonIndexed();
@@ -1293,7 +1301,7 @@ function kutuModel(parcalar) {
   }
   return { govde: gv.length ? mergeGeometries(gv) : null, isik: ig.length ? mergeGeometries(ig) : null };
 }
-function silindirModel(r, h, renk, kapak) {
+export function silindirModel(r, h, renk, kapak) {
   const g = new THREE.CylinderGeometry(r, r * 0.85, h, 10).translate(0, h / 2, 0).toNonIndexed(); g.deleteAttribute('uv');
   const g2 = new THREE.CylinderGeometry(r * 1.08, r * 1.08, 0.07, 10).translate(0, h + 0.03, 0).toNonIndexed(); g2.deleteAttribute('uv');
   for (const [gg, rk] of [[g, renk], [g2, kapak]]) {
@@ -1305,7 +1313,7 @@ function silindirModel(r, h, renk, kapak) {
 }
 
 // Model başına (gövde + ışık) InstancedMesh'ler. Statik kümede LOD uzaklığa göre sayı kısılır.
-class Kume {
+export class Kume {
   constructor(grup, m, max, mats, renkli = false) {
     this.max = max; this.n = 0; this.sayi = 0;
     this.mat = new Float32Array(max * 16); this.p = new Float32Array(max * 3);

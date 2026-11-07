@@ -14,3 +14,11 @@
 | ses/muzik/cyberpunk_beauty.ogg | "Cyberpunk Beauty" — Tarush Singhal, opengameart.org/content/cyberpunk-beauty | CC0 |
 
 Not: Mixamo türevi (Xbot/Soldier/Michelle) modeller KULLANILMADI. İndirilen dolaylı (ayna) kaynaklarda CC0 beyanı yazar sitelerindeki orijinal paket lisansına dayanır; yayın öncesi orijinal sayfalar yeniden kontrol edilebilir.
+
+## Harita verisi (assets/harita/)
+| Dosya | Kaynak | Lisans |
+|---|---|---|
+| harita/basinevleri_osm.json, harita/basinevleri.json | Harita verisi © OpenStreetMap katkıda bulunanlar, ODbL 1.0, https://www.openstreetmap.org/copyright (Overpass API ile alındı; basinevleri.json türetilmiş veritabanıdır, ODbL paylaşım şartı geçerlidir: atıf + aynı lisans) | ODbL 1.0 |
+| harita/basinevleri.json içindeki yükseklik ızgarası | SRTM 1 arc-saniye (30 m), NASA/USGS; OpenTopoData (opentopodata.org) `srtm30m` API'si üzerinden | Kamu malı (NASA SRTM); OpenTopoData hizmeti ücretsiz |
+
+Not: ODbL, oyunun kendisini değil, harita veritabanını bağlar; oyun içinde/ekranda "© OpenStreetMap katkıda bulunanlar" atfı gösterilmelidir.

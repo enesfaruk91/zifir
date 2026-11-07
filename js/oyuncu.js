@@ -75,12 +75,31 @@ export function kur(G) {
   durumlar.set(G, s);
   s.wheel = 0;
   if (typeof window !== 'undefined') window.addEventListener('wheel', e => { if (durumlar.get(G) === s && e.deltaY) s.wheel = Math.sign(e.deltaY); }, { passive: true });
-  const dogma = G.sehir?.rastgeleCati?.();
+  const dogma = G.sehir?.dogusNoktasi?.() ?? G.sehir?.rastgeleCati?.();
   p.konum.copy(sonlu(dogma) ? dogma : v(0, 60, 0));
   kamera(G, s, 1 / 60);
   kahraman(G, s, 0);
 }
 
+// Gerçek harita (çokgen bina): AABB yerine G.sehir'in kesin çokgen işlevleri kullanılır.
+function kesin(G) { return !!G.sehir?.kesin; }
+function araziY(G, x, z) { return G.sehir?.arazi ? G.sehir.arazi(x, z) : 0; }
+// (x,z)'yi bina çatısının içine taşı (kesin değilse AABB'ye kıstır)
+function catiSigdir(G, bina, x, z, pay) {
+  if (kesin(G) && bina.b?.kenar) { const q = G.sehir.catiyaSigdir(bina.b, x, z, pay); return [q.x, q.z]; }
+  return [sinirla(x, bina.k.min.x + pay, bina.k.max.x - pay), sinirla(z, bina.k.min.z + pay, bina.k.max.z - pay)];
+}
+// bina için aday (x,z) noktaları: kesinse çokgen köşeleri + kenar ortaları + bas'a en yakın sınır noktası
+function binaAdaylari(G, b, k, bas) {
+  if (kesin(G) && b.kenar) {
+    const o = [], E = b.kenar;
+    for (const e of E) { o.push([e.ax, e.az]); if (e.L > 8) o.push([(e.ax + e.bx) / 2, (e.az + e.bz) / 2]); }
+    const q = G.sehir.sinirNokta(b, bas.x, bas.z); o.push([q.x, q.z]);
+    return o;
+  }
+  const x = sinirla(bas.x, k.min.x, k.max.x), z = sinirla(bas.z, k.min.z, k.max.z), mx = (k.min.x + k.max.x) / 2, mz = (k.min.z + k.max.z) / 2;
+  return [[k.min.x, k.min.z], [k.max.x, k.min.z], [k.min.x, k.max.z], [k.max.x, k.max.z], [mx, k.min.z], [mx, k.max.z], [k.min.x, mz], [k.max.x, mz], [x, k.min.z], [x, k.max.z], [k.min.x, z], [k.max.x, z]];
+}
 function sonlu(v) { return v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z); }
 function olay(G, ad, veri) { G.olay?.emit?.(ad, veri); }
 function binalar(G, s) { return G.sehir ? (G.sehir.binalar || []) : s.sanal; }
@@ -89,7 +108,11 @@ function kutu(b, s) {
   if (![b.x, b.z, b.gx, b.gz, b.h].every(Number.isFinite)) return null;
   return new s.T.Box3(s.v(b.x - b.gx / 2, 0, b.z - b.gz / 2), s.v(b.x + b.gx / 2, b.h, b.z + b.gz / 2));
 }
-function normalBul(k, n, s) {
+function normalBul(k, n, s, G, b) {
+  if (G && b && kesin(G) && b.kenar) {
+    if (Math.abs(n.y - k.max.y) < 0.3) return s.v(0, 1, 0);
+    const q = G.sehir.sinirNokta(b, n.x, n.z); return s.v(q.nx, 0, q.nz);
+  }
   const yuzler = [
     [Math.abs(n.x - k.min.x), -1, 0, 0], [Math.abs(n.x - k.max.x), 1, 0, 0],
     [Math.abs(n.y - k.min.y), 0, -1, 0], [Math.abs(n.y - k.max.y), 0, 1, 0],
@@ -130,17 +153,14 @@ function ankrajBul(G, s) {
     const x = sinirla(kameraBas.x, k.min.x, k.max.x), z = sinirla(kameraBas.z, k.min.z, k.max.z);
     const dYatay = Math.hypot(x - kameraBas.x, z - kameraBas.z);
     const bakisY = kameraBas.y + yon.y * dYatay / Math.max(0.001, Math.hypot(yon.x, yon.z));
-    const adaylar = [];
-    for (const y of [minY, sinirla(bakisY, minY, k.max.y), k.max.y]) {
-      for (const xx of [k.min.x, k.max.x]) for (const zz of [k.min.z, k.max.z]) adaylar.push(s.v(xx, y, zz));
-      adaylar.push(s.v(x, y, k.min.z), s.v(x, y, k.max.z), s.v(k.min.x, y, z), s.v(k.max.x, y, z));
-    }
+    const adaylar = [], xz = binaAdaylari(G, b, k, kameraBas);
+    for (const y of [minY, sinirla(bakisY, minY, k.max.y), k.max.y]) for (const q of xz) adaylar.push(s.v(q[0], y, q[1]));
     for (const nokta of adaylar) {
       const fark = nokta.clone().sub(kameraBas), d = fark.length(), elMesafe = nokta.distanceTo(bas);
       if (d < 0.01 || elMesafe > en || fark.dot(yon) / d < cos) continue;
       const engel = isin(G, s, kameraBas, fark.divideScalar(d), d - 0.1);
       if (engel && kameraBas.distanceTo(engel.nokta) < d - 0.3) continue;
-      en = elMesafe; secim = { nokta, normal: normalBul(k, nokta, s), bina: b };
+      en = elMesafe; secim = { nokta, normal: normalBul(k, nokta, s, G, b), bina: b };
     }
   }
   return secim || sanalAnkraj(G, s);
@@ -173,14 +193,18 @@ function salinimHedefBul(G, s, taraf = 0, sev = 0) {
     if (dx * dx + dz * dz > 50 * 50) continue;
     const cx = (k.min.x + k.max.x) / 2, cz = (k.min.z + k.max.z) / 2;
     const xs = [], zs = [];
-    const noktalar = [[k.min.x, k.min.z], [k.max.x, k.min.z], [k.min.x, k.max.z], [k.max.x, k.max.z]];
+    const poli = kesin(G) && b.kenar;
+    let noktalar = poli ? b.kenar.map(e => [e.ax, e.az]) : [[k.min.x, k.min.z], [k.max.x, k.min.z], [k.min.x, k.max.z], [k.max.x, k.max.z]];
     for (const f of [20, 26, 32]) for (const aa of (taraf ? [taraf * 35 * RAD] : [0])) {
       const tx = bas.x + (yon.x * Math.cos(aa) + sg.x * Math.sin(aa)) * f, tz = bas.z + (yon.z * Math.cos(aa) + sg.z * Math.sin(aa)) * f;
+      if (poli) { const q = G.sehir.sinirNokta(b, tx, tz); noktalar.push([q.x, q.z]); continue; }
       noktalar.push([sinirla(tx, k.min.x, k.max.x), sinirla(tz, k.min.z, k.max.z)]);
       noktalar.push([sinirla(tx, k.min.x, k.max.x), tz < cz ? k.min.z : k.max.z], [tx < cx ? k.min.x : k.max.x, sinirla(tz, k.min.z, k.max.z)]);
     }
     for (const [x, z] of noktalar) {
-      const ox0 = x <= k.min.x + 1e-6 ? -1 : x >= k.max.x - 1e-6 ? 1 : 0, oz0 = z <= k.min.z + 1e-6 ? -1 : z >= k.max.z - 1e-6 ? 1 : 0;
+      let ox0, oz0;
+      if (poli) { const q = G.sehir.sinirNokta(b, x, z); ox0 = q.nx; oz0 = q.nz; }
+      else { ox0 = x <= k.min.x + 1e-6 ? -1 : x >= k.max.x - 1e-6 ? 1 : 0; oz0 = z <= k.min.z + 1e-6 ? -1 : z >= k.max.z - 1e-6 ? 1 : 0; }
       if (!ox0 && !oz0) continue;
       const ol = Math.hypot(ox0, oz0), ax = x + ox0 / ol * 1.8, az = z + oz0 / ol * 1.8;
       const fx = ax - bas.x, fz = az - bas.z, f = fx * yon.x + fz * yon.z, yan = fx * sg.x + fz * sg.z;
@@ -304,6 +328,7 @@ function devBit(G, s) {
   G.kahraman?.devOl?.(false); olay(G, 'devBit');
 }
 function yakinBina(G, s, pos, pay = 1.8) {
+  if (kesin(G)) { const b = G.sehir.yakinBina(pos, pay); return b ? { b, k: b.kutu } : null; }
   let en = null;
   for (const b of binalar(G, s)) {
     const k = kutu(b, s); if (!k) continue;
@@ -319,8 +344,7 @@ function zipBasla(G, s, hedef) {
   const bina = yakinBina(G, s, son, 0.5);
   // Çatıya yakın cephe nişanı da kenara çekilir; merkez ışını cephede kalabilir.
   if (bina && son.y >= bina.k.max.y - 6) {
-    son.x = sinirla(son.x, bina.k.min.x + 1, bina.k.max.x - 1);
-    son.z = sinirla(son.z, bina.k.min.z + 1, bina.k.max.z - 1);
+    [son.x, son.z] = catiSigdir(G, bina, son.x, son.z, 1);
     son.y = bina.k.max.y + 0.05;
   } else if (n.y > 0.5) son.y += 0.05;
   else { son.addScaledVector(n, 0.85); son.y -= 0.9; }
@@ -335,7 +359,7 @@ function zipIlerle(G, s, aday) {
   yol.divideScalar(mesafe);
   let izin = mesafe;
   // Kapsülü AABB üzerinde genişleterek hızlı zip sırasında tünellemeyi önle.
-  for (const b of binalar(G, s)) {
+  for (const b of (kesin(G) ? [] : binalar(G, s))) {
     const k = kutu(b, s); if (!k) continue;
     const genis = k.clone();
     genis.min.x -= 0.45; genis.max.x += 0.45;
@@ -391,7 +415,7 @@ function yuksekHedefBul(G, s) {
   if (h && Math.abs(h.normal.y) < 0.5) {
     const yb = yakinBina(G, s, h.nokta, 0.5);
     if (yb && yb.k.max.y >= minY) {
-      const k = yb.k, nokta = s.v(sinirla(h.nokta.x, k.min.x, k.max.x), k.max.y, sinirla(h.nokta.z, k.min.z, k.max.z));
+      const k = yb.k, q = catiSigdir(G, yb, h.nokta.x, h.nokta.z, 0.4), nokta = s.v(q[0], k.max.y, q[1]);
       return { nokta, normal: s.v(0, 1, 0), k, ust: k.max.y };
     }
   }
@@ -401,10 +425,8 @@ function yuksekHedefBul(G, s) {
     const k = kutu(b, s); if (!k || k.max.y < minY) continue;
     const dx = Math.max(k.min.x - bas.x, 0, bas.x - k.max.x), dz = Math.max(k.min.z - bas.z, 0, bas.z - k.max.z);
     if (dx * dx + dz * dz > MAXD * MAXD) continue;
-    const y = k.max.y, cx = sinirla(bas.x, k.min.x, k.max.x), cz = sinirla(bas.z, k.min.z, k.max.z);
-    const mx = (k.min.x + k.max.x) / 2, mz = (k.min.z + k.max.z) / 2;
-    const pts = [[k.min.x, k.min.z], [k.max.x, k.min.z], [k.min.x, k.max.z], [k.max.x, k.max.z],
-      [mx, k.min.z], [mx, k.max.z], [k.min.x, mz], [k.max.x, mz], [cx, k.min.z], [cx, k.max.z], [k.min.x, cz], [k.max.x, cz]];
+    const y = k.max.y;
+    const pts = binaAdaylari(G, b, k, bas);
     for (const [x, z] of pts) {
       const fx = x - bas.x, fy = y - bas.y, fz = z - bas.z, d = Math.hypot(fx, fy, fz);
       if (d < 6 || d > MAXD) continue;
@@ -422,9 +444,10 @@ function yuksekHedefBul(G, s) {
   return null;
 }
 function zemin(G, s, pos, onceY) {
-  let y = 0;
+  let y = araziY(G, pos.x, pos.z);
   const ust = G.sehir?.zeminY?.(pos.x, pos.z);
   if (Number.isFinite(ust) && onceY >= ust - 0.3) y = Math.max(y, ust);
+  if (kesin(G)) return y; // çokgen binalar zeminY'de zaten kesin
   for (const b of binalar(G, s)) {
     const k = kutu(b, s); if (!k) continue;
     if (pos.x > k.min.x - 0.15 && pos.x < k.max.x + 0.15 && pos.z > k.min.z - 0.15 && pos.z < k.max.z + 0.15 && onceY >= k.max.y - 0.3) y = Math.max(y, k.max.y);
@@ -500,7 +523,7 @@ function carpis(G, s, once, dt, duvarIzin = true) {
     }
   }
   // Şehir dışından düşüldüğünde de güvenli düz zemin vardır.
-  if (p.konum.y < 0) { p.konum.y = 0; p.hiz.y = Math.max(0, p.hiz.y); p.yerde = true; s.ziplamalar = 0; }
+  { const ay = araziY(G, p.konum.x, p.konum.z); if (p.konum.y < ay) { p.konum.y = ay; p.hiz.y = Math.max(0, p.hiz.y); p.yerde = true; s.ziplamalar = 0; } }
 }
 function duvarHareket(G, s, dt, x, y, ziplama) {
   const p = G.oyuncu, d = s.duvar, n = d.normal;
@@ -522,8 +545,7 @@ function duvarHareket(G, s, dt, x, y, ziplama) {
     const k = bina.k;
     if ((y > 0 || kos) && p.konum.y + 1.8 >= k.max.y) {
       const son = p.konum.clone().addScaledVector(n, -1.4);
-      son.x = sinirla(son.x, k.min.x + 0.8, k.max.x - 0.8);
-      son.z = sinirla(son.z, k.min.z + 0.8, k.max.z - 0.8);
+      [son.x, son.z] = catiSigdir(G, bina, son.x, son.z, 0.8);
       son.y = k.max.y + 0.04;
       s.zip = { bas: p.konum.clone(), son, sure: 0, once: p.konum.clone(), cati: true, yuksel: true };
       s.duvar = null; olay(G, 'konus'); G.efekt?.sars?.(0.2, 0.25); return;
@@ -535,7 +557,7 @@ function duvarHareket(G, s, dt, x, y, ziplama) {
     const hit = isin(G, s, p.konum.clone().add(s.v(0, 1, 0)), n.clone().negate(), 1.5);
     if (!hit) s.duvar = null;
   }
-  if (p.konum.y <= 0) { p.konum.y = 0; s.duvar = null; p.yerde = true; }
+  { const ay = araziY(G, p.konum.x, p.konum.z); if (p.konum.y <= ay) { p.konum.y = ay; s.duvar = null; p.yerde = true; } }
 }
 // Süzülme (Shift) / dalış (Ctrl, C): durum geçişleri ve olaylar.
 function halDurum(G, s, dal, suz) {
@@ -694,7 +716,7 @@ function kamera(G, s, dt) {
       s.kameraKonum.add(kh.duzeltme);
     }
   }
-  s.kameraKonum.y = Math.max(0.25, s.kameraKonum.y);
+  s.kameraKonum.y = Math.max(0.25 + araziY(G, s.kameraKonum.x, s.kameraKonum.z), s.kameraKonum.y);
   c.position.copy(s.kameraKonum);
   c.up.set(0, 1, 0);
   // Sallanmada ankraja doğru hafif bakış ofseti.

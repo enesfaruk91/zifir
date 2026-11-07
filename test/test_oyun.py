@@ -304,7 +304,9 @@ def js_gozlem() -> str:
           if (k.y < minY) minY = k.y;
           if (k.y > maxY) maxY = k.y;
           if (k.y <= -5) dusuk++;
-          for (const kb of kutular) {
+          if (G.sehir && G.sehir.kesin) { // gerçek harita: çokgen bina hacmi
+            if ([0.05, 0.95, 1.8].some(d => G.sehir.binaIcinde(k.x, k.y + d, k.z, 0.02) >= 0)) binaIci++;
+          } else for (const kb of kutular) {
             if (k.x > kb.min.x && k.x < kb.max.x && k.z > kb.min.z && k.z < kb.max.z &&
                 [0.05, 0.95, 1.8].some(d => k.y + d > kb.min.y && k.y + d < kb.max.y)) { binaIci++; break; }
           }
@@ -333,6 +335,10 @@ const O = await import('/js/oyuncu.js');
 const T = G.THREE, bin = G.sehir.binalar;
 const KUTULAR = bin.map(b => b.kutu);
 function icinde(p) {
+  if (G.sehir.kesin) { // gerçek harita: çokgen bina hacmi (kenardan 2 cm içeride)
+    for (const d of [0.05, 0.95, 1.8]) { const i = G.sehir.binaIcinde(p.x, p.y + d, p.z, 0.02); if (i >= 0) return i; }
+    return -1;
+  }
   for (let i = 0; i < KUTULAR.length; i++) { const k = KUTULAR[i];
     if (p.x > k.min.x && p.x < k.max.x && p.z > k.min.z && p.z < k.max.z &&
         [0.05, 0.95, 1.8].some(d => p.y + d > k.min.y && p.y + d < k.max.y)) return i; }
@@ -354,8 +360,14 @@ def js_test_kosu() -> str:
       const r = { deneme: 0, ornek: 0, ihlal: 0, ilk: null };
       for (let guvenlik = 0; r.deneme < 30 && guvenlik < 400; guvenlik++) {
         const b = aday[Math.floor(rnd() * aday.length)];
-        const d = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(rnd() * 4)];
-        const bx = b.x + d[0] * (b.gx / 2 + 12), bz = b.z + d[1] * (b.gz / 2 + 12);
+        let d = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(rnd() * 4)];
+        let bx = b.x + d[0] * (b.gx / 2 + 12), bz = b.z + d[1] * (b.gz / 2 + 12);
+        if (G.sehir.kesin) { // çokgen: rastgele bir kenarın ortasından 12 m dışarı, binaya doğru koş
+          const e = b.kenar[Math.floor(rnd() * b.kenar.length)];
+          if (e.L < 4) continue;
+          d = [e.nx, e.nz]; bx = (e.ax + e.bx) / 2 + e.nx * 12; bz = (e.az + e.bz) / 2 + e.nz * 12;
+          if (G.sehir.sinirIci && !G.sehir.sinirIci(bx, bz, 4)) continue; // başlangıç harita sınırı içinde olsun
+        }
         if (icinde({ x: bx, y: 0, z: bz }) >= 0 || icinde({ x: bx + d[0] * 1.5, y: 0, z: bz + d[1] * 1.5 }) >= 0) continue;
         r.deneme++;
         G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
@@ -399,6 +411,32 @@ def js_test_sallanma_carpisma() -> str:
 def js_test_gorsel_kutu() -> str:
     # (c) görsel InstancedMesh matrisleri ile fizik kutuları (binalar[i].kutu + carpis) uyuşuyor mu
     return "(async () => {" + JS_ORTAK + """
+      if (G.sehir.kesin) { // gerçek harita: birleşik duvar geometrisi köşeleri == fizik çokgeni; fizik katı mı
+        const gor = new Set(); let tepe = 0;
+        G.sahne.traverse(o => {
+          if (!o.isMesh || !o.geometry.attributes.aSd) return;
+          const pa = o.geometry.attributes.position;
+          for (let i = 0; i < pa.count; i++) { gor.add(pa.getX(i).toFixed(2) + ',' + pa.getZ(i).toFixed(2) + ',' + pa.getY(i).toFixed(2)); tepe++; }
+        });
+        const r = { instance: tepe, bina: bin.length, kutuEslesmeyen: 0, ornek: null, carpisiz: 0, carpisizOrnek: null, kose: 0 };
+        for (const b of bin) {
+          for (const e of b.kenar) {
+            for (const yy of [b.y0, b.y1]) {
+              r.kose++;
+              if (!gor.has(e.ax.toFixed(2) + ',' + e.az.toFixed(2) + ',' + yy.toFixed(2))) { r.kutuEslesmeyen++; if (!r.ornek) r.ornek = [b.id, e.ax, e.az, yy]; }
+            }
+            // çatı seviyesinin hemen altında, kenardan 0.3 m içeride fizik katı olmalı
+            const x = (e.ax + e.bx) / 2 - e.nx * 0.3, z = (e.az + e.bz) / 2 - e.nz * 0.3;
+            if (e.L > 1 && G.sehir.binaIcinde(x, b.y1 - 0.3, z, 0) >= 0) {
+              const h = G.sehir.carpis(new T.Vector3(x, b.y1 - 0.3, z), 0.1);
+              if (!h || !h.normal) { r.carpisiz++; if (!r.carpisizOrnek) r.carpisizOrnek = [b.id, x, b.y1 - 0.3, z]; }
+            }
+          }
+          const hp = G.sehir.carpis(new T.Vector3(b.px, (b.y0 + b.y1) / 2, b.pz), 0.1);
+          if (!hp || !hp.normal) { r.carpisiz++; if (!r.carpisizOrnek) r.carpisizOrnek = [b.id, b.px, b.pz]; }
+        }
+        return r;
+      }
       const m = new T.Matrix4(), c = new T.Vector3(), sc = new T.Vector3(), q = new T.Quaternion();
       const inst = [];
       G.sahne.traverse(o => {
@@ -429,13 +467,18 @@ def js_test_cekis() -> str:
     # (d) SOZLESME: sağ tık basılı = yüksek ankrajla sallanma, E = çatıya zip; nişan yüksek hedefi gösterir.
     return "(async () => {" + JS_ORTAK + """
       G.girdi = sahteGirdi;
-      const uzun = bin.filter(b => b.h > 40 && b.h < 100 && Math.hypot(b.x, b.z) < 250);
+      const uzun = G.sehir.kesin ? bin.filter(b => b.h > 20 && b.h < 100 && b.alan > 150) : bin.filter(b => b.h > 40 && b.h < 100 && Math.hypot(b.x, b.z) < 250);
       const sonuc = { deneme: 6, sallanGordu: 0, yuksekAnkraj: 0, zipGordu: 0, catida: 0,
                       nisanVar: 0, enGec: 0, ayrinti: [], durumlar: {}, ankrajKare: 0 };
       let n = 0, kk = 0, atlanan = 0;
       while (n < sonuc.deneme && kk < 60) {
-        const b = uzun[(kk * 7) % uzun.length], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4]; kk++;
-        const bx = b.x + d[0] * (b.gx / 2 + 15), bz = b.z + d[1] * (b.gz / 2 + 15);
+        const b = uzun[(kk * 7) % uzun.length]; let d = [[1, 0], [-1, 0], [0, 1], [0, -1]][n % 4]; kk++;
+        let bx = b.x + d[0] * (b.gx / 2 + 15), bz = b.z + d[1] * (b.gz / 2 + 15);
+        if (G.sehir.kesin) { // çokgen: en uzun kenarın ortasından 15 m dışarı
+          const e = b.kenar.reduce((a, c) => (c.L > a.L ? c : a));
+          d = [e.nx, e.nz]; bx = (e.ax + e.bx) / 2 + e.nx * 15; bz = (e.az + e.bz) / 2 + e.nz * 15;
+          if (icinde({ x: bx, y: 0, z: bz }) >= 0) continue;
+        }
         const yaw = Math.atan2(d[0], d[1]) + (n % 3 - 1) * 0.3;
         // A) yerden sağ tık: yüksek ankraj ve 'sallan' durumu
         G.oyuncu.isinla(new T.Vector3(bx, 0, bz));
@@ -461,7 +504,9 @@ def js_test_cekis() -> str:
           tuslar.clear(); yeni = new Set(); sahteGirdi.eksen.x = 0; sahteGirdi.eksen.y = 0; sahteGirdi.fareDX = 0;
           O.guncelle(G, 1 / 60);
           const nn = G.oyuncu.nisanNokta;
-          if (G.oyuncu.nisanVar && nn && nn.y >= b.h - 5.5 && nn.y <= b.h + 1.5 && nn.x > b.x - b.gx / 2 - 0.1 && nn.x < b.x + b.gx / 2 + 0.1 && nn.z > b.z - b.gz / 2 - 0.1 && nn.z < b.z + b.gz / 2 + 0.1) { secilenNisan = nn.clone(); break; }
+          const uzerinde = G.sehir.kesin ? (() => { const q = G.sehir.binaIciMi(nn.x, nn.z, 0.1); return !!q && Math.abs(q.h - b.h) < 1.5; })()
+            : !!nn && nn.x > b.x - b.gx / 2 - 0.1 && nn.x < b.x + b.gx / 2 + 0.1 && nn.z > b.z - b.gz / 2 - 0.1 && nn.z < b.z + b.gz / 2 + 0.1;
+          if (G.oyuncu.nisanVar && nn && nn.y >= b.h - 5.5 && nn.y <= b.h + 1.5 && uzerinde) { secilenNisan = nn.clone(); break; }
         }
         if (!secilenNisan) { atlanan++; continue; }
         n++; sonuc.atlanan = atlanan;
@@ -596,7 +641,7 @@ def js_test4() -> str:
         }
       }
       const b = binalar[0], r = 0.5;
-      const ic = new T.Vector3(
+      const ic = S.kesin ? new T.Vector3(b.px, (b.y0 + b.y1) / 2, b.pz) : new T.Vector3(
         (b.kutu.min.x + b.kutu.max.x) / 2,
         (b.kutu.min.y + b.kutu.max.y) / 2,
         (b.kutu.min.z + b.kutu.max.z) / 2
@@ -605,7 +650,7 @@ def js_test4() -> str:
       const duz = hit && hit.duzeltme ? hit.duzeltme : null;
       const son = ic.clone();
       if (duz) son.add(duz);
-      const icerde = son.x > b.kutu.min.x + 1e-4 && son.x < b.kutu.max.x - 1e-4 &&
+      const icerde = S.kesin ? S.binaIcinde(son.x, son.y, son.z, 1e-4) >= 0 : son.x > b.kutu.min.x + 1e-4 && son.x < b.kutu.max.x - 1e-4 &&
                      son.y > b.kutu.min.y + 1e-4 && son.y < b.kutu.max.y - 1e-4 &&
                      son.z > b.kutu.min.z + 1e-4 && son.z < b.kutu.max.z - 1e-4;
       return {

@@ -489,7 +489,8 @@ export function kur(G) {
       if (d >= 40 && d <= 120) return v.clone();
     }
     const a = rnd(0, 6.283), r = tur === 'dron' ? rnd(25, 50) : rnd(45, 100);
-    const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+    let x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+    const kp = s?.kapsam; if (kp) { x = Math.max(kp.x0 + 5, Math.min(kp.x1 - 5, x)); z = Math.max(kp.z0 + 5, Math.min(kp.z1 - 5, z)); }
     return V(x, zemin(x, z), z);
   }
   function dogur(tur, yakin) {
@@ -497,7 +498,9 @@ export function kur(G) {
     let v;
     if (yakin) {
       const p = oyuncuKonum(), a = rnd(0, 6.283), r = rnd(yakin[0], yakin[1]);
-      const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; v = V(x, zemin(x, z), z);
+      let x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      const kp = G.sehir?.kapsam; if (kp) { x = Math.max(kp.x0 + 5, Math.min(kp.x1 - 5, x)); z = Math.max(kp.z0 + 5, Math.min(kp.z1 - 5, z)); }
+      v = V(x, zemin(x, z), z);
     } else v = dogmaNoktasi(tur);
     if (tur === 'dron') { v.y = Math.max(v.y, zemin(v.x, v.z)) + rnd(8, 16); }
     etkinlestir(e, v); e.yaw = rnd(0, 6.28); e.vitrin = !!yakin;

@@ -147,6 +147,15 @@ function sarsUygula() {
   return true;
 }
 
+// Harita verisi (varsayılan şehir: Basınevleri / OSM). ?harita=eski → eski prosedürel şehir.
+if (new URLSearchParams(location.search).get('harita') !== 'eski') {
+  try {
+    const getir = async (u, zorunlu) => { const r = await fetch(u); if (!r.ok) { if (zorunlu) throw new Error(u + ' ' + r.status); return {}; } return r.json(); };
+    const [veri, katDuz] = await Promise.all([getir('assets/harita/basinevleri.json', true), getir('assets/harita/kat_duzelt.json', false).catch(() => ({}))]);
+    G.harita = { veri, katDuz };
+  } catch (e) { console.warn('[ZIFIR] harita yüklenemedi, eski şehir kullanılıyor:', e && e.message); }
+}
+
 const KUR = ['girdi', 'sehir', 'kahraman', 'oyuncu', 'dusman', 'gorev', 'ses', 'arayuz'];
 const GUNCELLE = ['girdi', 'oyuncu', 'kahraman', 'sehir', 'dusman', 'gorev', 'ses', 'arayuz'];
 const moduller = {};
@@ -242,7 +251,10 @@ function kare() {
   if (baglamYok) { requestAnimationFrame(kare); return; }
   renderer.info.reset();
   const sarsildi = sarsUygula();
-  composer.render();
+  // Bağlam kaybı bir program derlemesinin ortasına denk gelirse three.js null günlük okur ve fırlatır;
+  // döngü ölmesin (bağlam geri gelince devam eder). Bağlam sağlamken gelen hata yine kaydedilir.
+  try { composer.render(); }
+  catch (e) { if (!baglamYok && !renderer.getContext().isContextLost()) { if (hatalar.length < 50) hatalar.push('render: ' + e.message); console.error(e); } }
   if (sarsildi) { kamera.position.copy(_p); kamera.quaternion.copy(_q); }
   if (G.durum === 'oyun' && !test) {
     fpsT += gecen; fpsN++;

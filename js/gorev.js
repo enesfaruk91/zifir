@@ -214,7 +214,7 @@ export function kur(G) {
     for (let i = 0; i < 8; i++) {
       for (let k = 0; k < 6; k++) {
         const nx = x + Math.cos(yon) * rnd(40, 60), nz = z + Math.sin(yon) * rnd(40, 60);
-        if (Math.abs(nx) < lim && Math.abs(nz) < lim) { x = nx; z = nz; break; }
+        if (sehir()?.sinirIci ? sehir().sinirIci(nx, nz, 60) : (Math.abs(nx) < lim && Math.abs(nz) < lim)) { x = nx; z = nz; break; }
         yon += 1.2;
       }
       y = Math.max(zemin(x, z) + 14, Math.min(90, y + rnd(-12, 18)));

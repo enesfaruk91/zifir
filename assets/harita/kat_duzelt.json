@@ -1,0 +1,4 @@
+{
+  "_aciklama": "Bina kat sayisi duzeltmesi. Biçim: \"<osm_id>\": kat_sayisi (tam sayi, 1 kat = 3 m). Burada yazan bina, tahmin edilen/OSM yuksekligini ezer; oyun kodunu degistirmeden sayfayi yenilemek yeter. Alt cizgiyle baslayan anahtarlar yok sayilir. osm_id'yi oyunda tarayici konsolunda G.sehir.binaBilgi() yazarak (oyuncuya en yakin bina) ya da assets/harita/basinevleri.json icindeki binalar[].id alanindan bulabilirsin.",
+  "_ornek": { "258089069": 4 }
+}

@@ -37,6 +37,7 @@ const CSS = `
 @keyframes yukari{from{opacity:0;transform:translateY(12px)}}
 #arayuz .mn-ipucu{position:absolute;left:6vw;bottom:3.4vh;display:flex;gap:1.6vw;align-items:center;font-size:min(1.7vh,1.2vw);color:#8c7fb3;letter-spacing:.12em;animation:yukari 1s 1.2s both}
 #arayuz .mn-ipucu kbd{font-size:.9em}
+#arayuz .mn-atif{position:absolute;left:6vw;bottom:1vh;font-size:min(1.25vh,.9vw);letter-spacing:.06em;color:#8c7fb3;opacity:.8}
 #arayuz .mn-surum{position:absolute;right:3vw;bottom:3.4vh;font-size:min(1.6vh,1.1vw);letter-spacing:.3em;color:#6e6392}
 /* panel */
 #arayuz .panel{position:absolute;right:5vw;top:50%;width:min(46vw,680px);max-height:84vh;overflow:auto;transform:translateY(-50%);padding:2.4vh 1.8vw;border-radius:4px 22px 4px 22px;
@@ -779,6 +780,7 @@ export function kur(G) {
    <div class="mn-alt">Gece Şehrinin Kara Kahramanı</div><div class="mn-liste"><div class="mn-cubuk"></div></div></div>
    <div class="panel gizli"></div>
    <div class="mn-ipucu"><span><kbd>W</kbd><kbd>S</kbd> gezin</span><span><kbd>Enter</kbd> seç</span><span><kbd>A</kbd><kbd>D</kbd> değiştir</span><span><kbd>Esc</kbd> geri</span></div>
+   <div class="mn-atif">Harita verisi © OpenStreetMap katkıda bulunanlar (ODbL)</div>
    <div class="mn-surum">GECE ŞEHRİ · v1</div>`;
   e.bg = e.menu.querySelector('.mn-bg'); e.liste = e.menu.querySelector('.mn-liste'); e.cubuk = e.menu.querySelector('.mn-cubuk');
   e.panel = e.menu.querySelector('.panel'); e.logo = e.menu.querySelector('.mn-logo'); e.baslikM = e.menu.querySelector('.mn-baslik'); e.ipucuM = e.menu.querySelector('.mn-ipucu');
@@ -908,6 +910,13 @@ function miniCiz(G, px, pz, fx, fz, hedef) {
   if (bs) {
     const lim = MR * 1.5;
     for (const b of bs) {
+      if (b.halka) { // gerçek harita: bina çokgeni
+        if (px < b.minx - lim || px > b.maxx + lim || pz < b.minz - lim || pz > b.maxz + lim) continue;
+        const k = Math.min(1, (b.yuk || b.h) / 60);
+        x.fillStyle = `rgba(${90 + k * 110 | 0},${60 + k * 40 | 0},${170 + k * 60 | 0},${0.55 + k * 0.35})`;
+        x.beginPath(); b.halka.forEach((q, i) => (i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]))); x.closePath(); x.fill();
+        continue;
+      }
       if (Math.abs(b.x - px) > lim + b.gx || Math.abs(b.z - pz) > lim + b.gz) continue;
       const k = Math.min(1, b.h / 120);
       x.fillStyle = `rgba(${90 + k * 110 | 0},${60 + k * 40 | 0},${170 + k * 60 | 0},${0.5 + k * 0.4})`;

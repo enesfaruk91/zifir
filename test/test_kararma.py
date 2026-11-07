@@ -27,7 +27,7 @@ PROBE = r"""
     let L = 0; G.sahne.traverse(o => { if (o.isLight && o.visible) L++; });
     K.push({ t: performance.now(), l: s / n / 255, exp: G.renderer.toneMappingExposure, L, prog: G.renderer.info.programs.length,
       fog: G.sahne.fog && G.sahne.fog.density, w, h, gdt: G.gercekDt, kal: G.kalite, dur: G.oyuncu && G.oyuncu.durum,
-      kam: G.kamera.position.y, ic: KB.some(k => G.kamera.position.x > k.min.x && G.kamera.position.x < k.max.x && G.kamera.position.z > k.min.z && G.kamera.position.z < k.max.z && G.kamera.position.y > k.min.y && G.kamera.position.y < k.max.y) ? 1 : 0,
+      kam: G.kamera.position.y, ic: (G.sehir && G.sehir.kesin) ? (G.sehir.binaIcinde(G.kamera.position.x, G.kamera.position.y, G.kamera.position.z, 0.02) >= 0 ? 1 : 0) : KB.some(k => G.kamera.position.x > k.min.x && G.kamera.position.x < k.max.x && G.kamera.position.z > k.min.z && G.kamera.position.z < k.max.z && G.kamera.position.y > k.min.y && G.kamera.position.y < k.max.y) ? 1 : 0,
       yeni: (() => { const ad = G.renderer.info.programs.map(p => p.name + '#' + p.id); const y = ad.filter(a => !oncekiProg.has(a)); oncekiProg = new Set(ad); return y.length > 3 && K.length > 0 ? y.length + 'ilk' : y.join(',') + (y.length ? '@' + G.renderer.info.programs.filter(p => y.includes(p.name + '#' + p.id)).map(p => p.cacheKey.replace(/\s+/g,'').slice(0, 400)).join('|') : ''); })() });
   };
 })()
