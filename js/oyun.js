@@ -26,6 +26,20 @@ renderer.debug.onShaderError = (gl, program, vs, fs) => {
 };
 
 renderer.info.autoReset = false;
+// WebGL bağlam kaybı: duraklat, geri gelince devam et (three.js kaynakları kendisi yeniden kurar)
+let baglamYok = false, baglamOncekiDurum = null;
+canvas.addEventListener('webglcontextlost', e => {
+  e.preventDefault(); baglamYok = true;
+  console.warn('[ZIFIR] BAGLAM KAYBI');
+  if (G.durum === 'oyun') { baglamOncekiDurum = 'oyun'; G.durum = 'duraklat'; }
+  G.arayuz?.mesaj?.('Görüntü yeniden yükleniyor', 3);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  baglamYok = false;
+  console.log('[ZIFIR] BAGLAM GERI GELDI');
+  if (baglamOncekiDurum === 'oyun' && G.durum === 'duraklat') G.durum = 'oyun';
+  baglamOncekiDurum = null;
+});
 const sahne = new THREE.Scene();
 sahne.background = new THREE.Color(0x0a0618);
 const kamera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 2500);
@@ -174,7 +188,8 @@ G.kaliteAyarla = function (ad, kaydet = true) {
   if (G.kalite === ad) return;
   G.kalite = ad;
   if (kaydet) { try { localStorage.setItem('zifir_kalite', ad); } catch (e) {} }
-  const golge = ad === 'dusuk' ? 0 : ad === 'orta' ? 1024 : 2048;
+  // Düşükte gölgeyi KAPATMA (gerçek RX550'de kapatmak 21 programı yeniden derleyip 1.1 sn donduruyordu); yalnız 512'ye indir.
+  const golge = ad === 'dusuk' ? 512 : ad === 'orta' ? 1024 : 2048;
   const golgeDegisti = renderer.shadowMap.enabled !== (golge > 0);
   renderer.shadowMap.enabled = golge > 0;
   sahne.traverse(o => {
@@ -197,6 +212,20 @@ let k0 = 'orta'; try { const v = localStorage.getItem('zifir_kalite'); if (KADEM
 G.kaliteAyarla(k0, false);
 let fpsT = 0, fpsN = 0;
 
+// Shader ön ısıtma: görünmez havuz nesneleri ve bulanık geçişi ilk kez oyun sırasında derlenmesin
+// (ölçüm: oyun içinde 7+ program karede derleniyordu; RX550/Mesa'da her biri takılma + kararma).
+{
+  const gizli = [];
+  sahne.traverse(o => { if (!o.visible) { gizli.push(o); o.visible = true; } });
+  try { renderer.compile(sahne, kamera); } catch (e) { hatalar.push('compile: ' + e.message); }
+  for (const o of gizli) o.visible = false;
+  try {
+    const bu = bulanikPass.enabled; bulanikPass.enabled = true; bulanikPass.uniforms.guc.value = 0.5;
+    composer.render(0);
+    bulanikPass.enabled = bu; bulanikPass.uniforms.guc.value = 0;
+  } catch (e) { hatalar.push('isitma: ' + e.message); }
+}
+
 addEventListener('resize', boyutla);
 
 function kare() {
@@ -210,6 +239,7 @@ function kare() {
     try { moduller[ad]?.guncelle?.(G, dt); }
     catch (e) { if (hatalar.length < 50) { hatalar.push(ad + '.guncelle: ' + e.message); console.error(e); } }
   }
+  if (baglamYok) { requestAnimationFrame(kare); return; }
   renderer.info.reset();
   const sarsildi = sarsUygula();
   composer.render();

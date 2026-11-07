@@ -99,9 +99,9 @@
     "detay": {
       "durum": "suzul",
       "hiz": [
-        14.426978563956245,
+        13.97562473935407,
         -3.738764987615089,
-        -4.548808868398462
+        -5.788893309677402
       ]
     }
   },
@@ -122,7 +122,7 @@
     "ok": true,
     "detay": {
       "bozuk": 0,
-      "gorunen": 500,
+      "gorunen": 499,
       "zar": true,
       "iz": false
     }
@@ -132,7 +132,7 @@
     "ok": true,
     "detay": {
       "bozuk": 0,
-      "gorunen": 507,
+      "gorunen": 506,
       "zar": false,
       "iz": true
     }
@@ -142,7 +142,7 @@
     "ok": true,
     "detay": {
       "bozuk": 0,
-      "gorunen": 499,
+      "gorunen": 498,
       "zar": false,
       "iz": false
     }

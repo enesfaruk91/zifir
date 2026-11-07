@@ -216,6 +216,8 @@ const CSS = `
 #arayuz .bsn b{display:block;font-size:min(2.6vh,20px);letter-spacing:.06em}
 #arayuz .gik{position:absolute;right:.8vw;top:1vh;width:min(6vh,52px);height:min(6vh,52px);filter:drop-shadow(0 0 8px rgba(46,242,224,.5))}
 #arayuz .gorev .ga{padding-right:min(6vh,52px)}
+/* dokunmatik: duraklat (58px) ve DEV düğmesi sağ üstte; kartlar onların soluna */
+@media (pointer:coarse){#arayuz .gorev,#arayuz .sayac,#arayuz .bsn{right:calc(max(12px,env(safe-area-inset-right)) + 136px)}#arayuz .gorev{width:min(30vw,300px)}}
 #arayuz .bslist{display:grid;grid-template-columns:1fr 1fr;gap:1.2vh .8vw}
 #arayuz .bsk{display:flex;gap:.8vw;align-items:center;padding:.8vh .6vw;background:rgba(40,20,90,.35);border:1px solid rgba(157,77,255,.4);border-radius:10px}
 #arayuz .bsk img{width:min(8.5vh,70px);height:min(8.5vh,70px);flex:none}
@@ -238,7 +240,7 @@ const KONTROLLER = [
   ['<kbd>F</kbd>', 'Dokunaç kamçısı'],
   ['<kbd>Fare tekerleği</kbd>', 'Hedef değiştir'],
   ['<kbd>Space</kbd>', 'Zıpla (havada 2. zıplama)'],
-  ['<kbd>Shift</kbd>', 'Koş · duvara tırman · havada süzül'],
+  ['<kbd>Shift</kbd>', 'Koş · duvara tırman · havada süzül (süzülürken A/D: dön)'],
   ['<kbd>C</kbd> / <kbd>Ctrl</kbd>', 'Dalış · klavye kilidi yoksa C kullan'],
   ['<kbd>Q</kbd>', 'DEV ZİFİR (güç dolunca)'],
   ['bol'],

@@ -609,27 +609,39 @@ function fizik(G, s, dt) {
     const z = zemin(G, s, p.konum, p.konum.y);
     if (p.konum.y - z < 3 && p.hiz.y < 0 && s.halat > 6) s.halat = Math.max(6, s.halat - 20 * dt);
   } else if (suz) {
-    // Süzülme: kamera yönüne yumuşak dönüş (70°/sn + A/D yatışı), yatay hız hedefi 22 m/s.
-    const yt = Math.hypot(p.hiz.x, p.hiz.z), t = s.ileri;
-    const c = yt > 1 ? s.v(p.hiz.x / yt, 0, p.hiz.z / yt) : t.clone();
+    // Süzülme: A/D kamera yönünü (yaw) döndürür (fareyle toplanır), yön kamerayı 90°/sn ile izler,
+    // hafif yan kayma eklenir. W hızlanır/burun aşağı, S yavaşlatır.
+    s.yaw -= x * 60 * RAD * dt;
+    // Yan kayma (yan) hıza yazılıyor; her kare geri beslenirse yön birikip ~90° sapar. Bu yüzden son
+    // karede yazdığımız hıza hâlâ eşitse saf (yan kaymasız) yatay hızı kullan; çarpışma vb. değiştirdiyse yeniden eşitle.
+    let hx0 = p.hiz.x, hz0 = p.hiz.z;
+    const sz = s.suzSon;
+    if (sz && Math.abs(hx0 - sz.x) < 0.5 && Math.abs(hz0 - sz.z) < 0.5) { hx0 = sz.px; hz0 = sz.pz; }
+    const yt = Math.hypot(hx0, hz0), t = s.v(-Math.sin(s.yaw), 0, -Math.cos(s.yaw));
+    const c = yt > 1 ? s.v(hx0 / yt, 0, hz0 / yt) : t.clone();
     const fark = Math.atan2(c.x * t.z - c.z * t.x, c.x * t.x + c.z * t.z);
-    const adim = sinirla(fark, -70 * RAD * dt, 70 * RAD * dt) + x * 50 * RAD * dt;
+    const adim = sinirla(fark, -90 * RAD * dt, 90 * RAD * dt);
     const co = Math.cos(adim), si = Math.sin(adim);
     const nx = c.x * co - c.z * si, nz = c.x * si + c.z * co;
-    const hedefHiz = 22 * carp;
-    const ny = Math.min(45, yt + (hedefHiz - yt) * yumusak(yt < hedefHiz ? 1.5 : 0.4, dt));
-    p.hiz.x = nx * ny; p.hiz.z = nz * ny;
+    const hedefHiz = (y > 0 ? 28 : y < 0 ? 14 : 22) * carp;
+    const ny = Math.min(45, yt + (hedefHiz - yt) * yumusak(yt < hedefHiz ? 1.5 : 0.8, dt));
+    const yan = x * 4 * Math.min(1, ny / 15);
+    p.hiz.x = nx * ny + Math.cos(s.yaw) * yan; p.hiz.z = nz * ny - Math.sin(s.yaw) * yan;
+    s.suzSon = { x: p.hiz.x, z: p.hiz.z, px: nx * ny, pz: nz * ny };
   } else {
     if (!dal) p.hiz.addScaledVector(s.istek, 20 * carp * dt);
     const yatay = Math.hypot(p.hiz.x, p.hiz.z);
     // Hava kontrolü ivme verir, sallanmadan gelen momentumu kesmez.
     if (yatay > 42 * carp) { const oran = (yatay - (yatay - 42 * carp) * yumusak(2, dt)) / yatay; p.hiz.x *= oran; p.hiz.z *= oran; }
   }
-  if (suz) p.hiz.y += (-3 - p.hiz.y) * yumusak(10, dt);
+  if (suz) p.hiz.y += ((y > 0 ? -5 : y < 0 ? -1.5 : -3) - p.hiz.y) * yumusak(10, dt);
   else p.hiz.y -= (dal ? 62.5 : 25) * dt;
   if (dal) {
     p.hiz.y = Math.max(p.hiz.y, -70);
     const k = Math.exp(-0.223 * dt); p.hiz.x *= k; p.hiz.z *= k;
+    // Hafif A/D yönlendirme: yatay hız yönü ve kamera 25°/sn döner.
+    const da = -x * 25 * RAD * dt, dc = Math.cos(da), ds = Math.sin(da), hx = p.hiz.x, hz = p.hiz.z;
+    p.hiz.x = hx * dc + hz * ds; p.hiz.z = -hx * ds + hz * dc; s.yaw += da; // hız yönü yaw ile aynı yöne (x-z dönüş matrisi ters işaretli)
   }
   const once = p.konum.clone();
   p.konum.addScaledVector(p.hiz, dt);
@@ -689,7 +701,7 @@ function kamera(G, s, dt) {
   if (s.ankraj) s.ofsT.copy(s.ankraj).sub(p.konum).normalize().multiplyScalar(2.2); else s.ofsT.set(0, 0, 0);
   s.bakisOfs.lerp(s.ofsT, yumusak(2.5, dt));
   c.lookAt(s.kameraHedef.clone().addScaledVector(s.bakis, 8).add(s.bakisOfs));
-  const istenenRoll = s.ankraj ? sinirla(-p.hiz.dot(s.sag) * 0.006, -0.14, 0.14) : 0;
+  const istenenRoll = s.ankraj ? sinirla(-p.hiz.dot(s.sag) * 0.006, -0.14, 0.14) : (s.bank || 0) * -0.25;
   s.roll += (istenenRoll - s.roll) * yumusak(5, dt);
   c.rotateZ(s.roll);
   const alt = s.ankraj ? Math.pow(Math.max(0, -s.anlik.copy(p.konum).sub(s.ankraj).normalize().y), 3) : 0;
@@ -740,6 +752,17 @@ function kahraman(G, s, dt) {
       k.grup.position.z += (mz - k.grup.position.z) * s.duvarG;
     } else s.yonQ.slerp(s.q, yumusak(s.duvarG > 0.02 ? 15 : hizK, dt || 1));
     k.grup.quaternion.copy(s.yonQ);
+    {
+      const ex = (s.suzul || s.dalis) ? sinirla(G.girdi?.eksen?.x || 0, -1, 1) : 0;
+      s.bank = (s.bank || 0) + (ex * (s.dalis ? 0.35 : 0.6) - (s.bank || 0)) * yumusak(6, dt || 1);
+      if (Math.abs(s.bank) > 0.003) {
+        s.q2.setFromAxisAngle(s.eksenZ, s.bank);
+        k.grup.quaternion.multiply(s.q2);
+        const dv2 = s.anlik.set(0, 0.95, 0).applyQuaternion(s.q2).applyQuaternion(s.yonQ);
+        k.grup.position.x -= dv2.x; k.grup.position.z -= dv2.z;
+        k.grup.position.y += 0.95 - dv2.y;
+      }
+    }
     if (s.takla > 0) {
       // Takla/yuvarlanma/kaçış dönüşü gövde merkezi etrafında.
       const ilerleme = 1 - s.takla / s.taklaSure, ang = ilerleme * Math.PI * 2 * s.taklaYon;
@@ -1044,21 +1067,34 @@ function salTestAdim(G, s) {
 function suzTestAdim(G, s, dt) {
   const T = s.suzTest, p = G.oyuncu; T.t += dt;
   T.girdi.tus.clear();
-  const f = T.t < 3 ? 'suz1' : T.t < 4.5 ? 'dalis' : T.t < 7.5 ? 'suz2' : 'bitti';
-  if (f === 'suz1' || f === 'suz2') T.girdi.tus.add('ShiftLeft');
-  if (f === 'dalis') T.girdi.tus.add('ControlLeft');
-  T.girdi.eksen.y = 1; T.girdi.tus.add('KeyW');
+  const f = T.t < 3 ? 'suz1' : T.t < 4.5 ? 'dalis' : T.t < 7.5 ? 'suz2' : T.t < 9.5 ? 'sagA' : T.t < 11.5 ? 'solD' : T.t < 13 ? 'dalisA' : 'bitti';
+  if (f === 'suz1' || f === 'suz2' || f === 'sagA' || f === 'solD') T.girdi.tus.add('ShiftLeft');
+  const xe = f === 'sagA' || f === 'dalisA' ? -1 : f === 'solD' ? 1 : 0;
+  if (xe) T.girdi.tus.add(xe < 0 ? 'KeyA' : 'KeyD');
+  if (f === 'dalis' || f === 'dalisA') T.girdi.tus.add('ControlLeft');
+  T.girdi.eksen.x = xe; T.girdi.eksen.y = 1; T.girdi.tus.add('KeyW');
   const y = Math.hypot(p.hiz.x, p.hiz.z);
   if (f !== T.faz) {
     if (T.faz === 'suz1') console.log(`[SUZUL] suz1 bitti: maxDikey(kenetlenmis)=${T.vyEn.toFixed(2)} yatay=${y.toFixed(1)} durum=${T.durum}`);
     if (T.faz === 'dalis') console.log(`[SUZUL] dalis bitti: minDikey=${T.vyMin.toFixed(1)} yatay=${y.toFixed(1)}`);
     if (f === 'bitti') console.log(`[SUZUL] OZET suz1VyMin=${T.vyEn.toFixed(2)} dalisVyMin=${T.vyMin.toFixed(1)} yatayOnce=${T.yatayOnce.toFixed(1)} yatayMaks2=${T.yatayMaks2.toFixed(1)}`);
+    if (T.faz === 'sagA' || T.faz === 'solD' || T.faz === 'dalisA') {
+      console.log(`[SUZUL] YON ${T.faz} (${T.faz === 'solD' ? 'D' : 'A'} basili) heading_degisim=${(T.hc || 0).toFixed(1)} derece (pozitif=sola) yaw=${(s.yaw * 180 / Math.PI).toFixed(1)} bank=${(s.bank || 0).toFixed(2)} suzul=${!!s.suzul} dalis=${!!s.dalis}`);
+    }
+    T.hc = 0; T.hp = undefined;
+    T.h0 = Math.atan2(p.hiz.x, p.hiz.z) * 180 / Math.PI;
     T.faz = f; if (f === 'dalis') T.vyMin = 0; if (f === 'suz2') T.yatayOnce = y;
   }
   if (f === 'suz1' && T.t > 0.6) { T.vyEn = Math.min(T.vyEn, p.hiz.y); T.durum = p.durum; }
   if (f === 'dalis') T.vyMin = Math.min(T.vyMin, p.hiz.y);
   if (f === 'suz2') T.yatayMaks2 = Math.max(T.yatayMaks2, y);
-  if (f === 'bitti') T.girdi.tus.clear();
+  if (f === 'sagA' || f === 'solD' || f === 'dalisA') {
+    const hd = Math.atan2(p.hiz.x, p.hiz.z) * 180 / Math.PI;
+    if (T.hp !== undefined) { const d = ((hd - T.hp + 540) % 360) - 180; T.hc = (T.hc || 0) + d; }
+    T.hp = hd;
+    if (Math.floor(T.t * 2) !== Math.floor((T.t - dt) * 2)) console.log(`[SUZUL] iz ${f} t=${T.t.toFixed(1)} heading_kum=${(T.hc||0).toFixed(1)} yaw=${(s.yaw*180/Math.PI).toFixed(1)} hiz=${Math.hypot(p.hiz.x,p.hiz.z).toFixed(1)}`);
+  } else T.hp = undefined;
+  if (f === 'bitti') { T.girdi.tus.clear(); T.girdi.eksen.x = 0; }
 }
 export function guncelle(G, dt) {
   const s = durumlar.get(G);

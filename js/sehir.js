@@ -1199,7 +1199,7 @@ export function guncelle(G, dt) {
   const merkez = (G.oyuncu && G.oyuncu.konum) ? G.oyuncu.konum : G.kamera.position;
   _ld.copy(d.ayYon);
   _r.crossVectors(_yukari, _ld).normalize(); _u.crossVectors(_ld, _r).normalize();
-  const tx = (2 * 75) / 2048;
+  const tx = (2 * 75) / d.ay.shadow.mapSize.x;  // gerçek gölge haritası boyutu (kalite: 1024/2048); yanlış ızgara gölgeyi titretir
   const a = Math.round(merkez.dot(_r) / tx) * tx, b = Math.round(merkez.dot(_u) / tx) * tx, c = merkez.dot(_ld);
   _c.set(0, 0, 0).addScaledVector(_r, a).addScaledVector(_u, b).addScaledVector(_ld, c);
   d.ay.target.position.copy(_c);
