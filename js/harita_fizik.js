@@ -148,6 +148,34 @@ function kutup(b) {
   b.px = bx; b.pz = bz; b.pr = Math.max(0, bd);
 }
 
+// Kırma (hipped) çatı: yalnız basit dışbükey (<=6 köşe), delik yok, 3-8 katlı konutlar. Sırt çizgisi uzun kenar yönünde.
+// Yükseklik (düz çatı seviyesinin ÜSTÜNDE): h(x,z) = min(hr, k * en yakın kenara uzaklık). Düz çatı seviyesi (b.y1) taban kalır.
+function kirmaHesapla(b) {
+  const P = b.halka, n = P.length;
+  if (b.halkalar.length > 1 || n < 3 || n > 6 || b.tur === 'ibadet' || b.tur === 'yardimci' || b.tur === 'sanayi') return null;
+  if (b.yuk < 9 || b.yuk > 24 || b.alan < 70 || b.alan > 1200) return null;
+  if (kimlikHash(b.id, 21) > 0.68) return null;
+  let isaret = 0;
+  for (let i = 0; i < n; i++) {
+    const a = P[i], c = P[(i + 1) % n], d = P[(i + 2) % n];
+    const cr = (c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0]);
+    if (Math.abs(cr) < 1e-6) continue;
+    if (isaret && Math.sign(cr) !== isaret) return null; // dışbükey değil
+    isaret = Math.sign(cr);
+  }
+  let en = null;
+  for (const e of b.kenar) if (!en || e.L > en.L) en = e;
+  const dx = en.dx, dz = en.dz, px = -dz, pz = dx;
+  let s0 = 1e9, s1 = -1e9, t0 = 1e9, t1 = -1e9;
+  for (const p of P) { const s = p[0] * dx + p[1] * dz, t = p[0] * px + p[1] * pz; if (s < s0) s0 = s; if (s > s1) s1 = s; if (t < t0) t0 = t; if (t > t1) t1 = t; }
+  const hs = (t1 - t0) / 2, hl = (s1 - s0) / 2;
+  if (hs < 2.4 || hl < hs) return null;
+  const hr = Math.max(1.1, Math.min(3.2, hs * 0.5));
+  const cs = (s0 + s1) / 2, ct = (t0 + t1) / 2, rl = Math.max(0, hl - hs);
+  const pt = (s) => [dx * s + px * ct, dz * s + pz * ct];
+  return { hr, k: hr / hs, hs, dx, dz, R1: pt(cs - rl), R2: pt(cs + rl) };
+}
+
 // =====================================================================
 export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
   const egim = !!secenek.egim;
@@ -190,6 +218,7 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
       if (icerde(b, mx + e.nx * 0.05, mz + e.nz * 0.05)) { e.nx = -e.nx; e.nz = -e.nz; }
     }
     kutup(b);
+    b.kirma = secenek.kirma === false ? null : kirmaHesapla(b);
     b.x = b.px; b.z = b.pz;
     const yar = Math.max(0.5, b.pr * 0.7);
     b.gx = b.gz = yar * 2; // eski kod (b.x ± gx/2) çatının İÇİNDE kalsın
@@ -225,12 +254,18 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
   const X0 = kp.x_min, X1 = kp.x_max, Z0 = kp.z_min, Z1 = kp.z_max;
 
   // ---------- zemin ----------
+  // kırma çatının düz çatı seviyesi üstündeki yüksekliği (nokta çokgenin içinde varsayılır)
+  function catiH(b, x, z) {
+    const K = b.kirma; if (!K) return 0;
+    const h = K.k * sinirUzak(b, x, z);
+    return h < K.hr ? h : K.hr;
+  }
   function binaUst(x, z) {
     const l = hucre[cz(z) * GNX + cx(x)];
     let y = -Infinity;
     for (let k = 0; k < l.length; k++) {
       const b = binalar[l[k]];
-      if (b.y1 > y && icerde(b, x, z)) y = b.y1;
+      if (b.y1 + (b.kirma ? b.kirma.hr : 0) > y && icerde(b, x, z)) { const t = b.y1 + (b.kirma ? catiH(b, x, z) : 0); if (t > y) y = t; }
     }
     return y;
   }
@@ -282,10 +317,13 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
         damga[i] = damgaNo;
         const b = binalar[i];
         if (px < b.minx - r || px > b.maxx + r || pz < b.minz - r || pz > b.maxz + r) continue;
-        if (py + r < b.y0 || py - r > b.y1) continue;
-        const cy = py < b.y0 ? b.y0 : (py > b.y1 ? b.y1 : py);
+        if (py + r < b.y0 || py - r > b.y1 + (b.kirma ? b.kirma.hr : 0)) continue;
+        const ic = icerde(b, px, pz);
+        const ty = b.kirma && ic ? b.y1 + catiH(b, px, pz) : b.y1; // kırma çatı yüzeyi
+        if (py - r > ty) continue;
+        const cy = py < b.y0 ? b.y0 : (py > ty ? ty : py);
         const dy = py - cy;
-        if (icerde(b, px, pz)) {
+        if (ic) {
           const d2 = dy * dy;
           if (d2 >= r2) continue;
           if (d2 > 1e-12) { // merkez taban içinde ama prizmanın altında/üstünde: dikey it
@@ -293,8 +331,8 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
             py += s * (r - d); ekle(0, s, 0); continue;
           }
           enYakinSinir(b, px, pz, _s); // merkez prizmanın içinde: en yakın yüzden it
-          const yat = _s[2], yuk = b.y1 - py, alt = py - b.y0;
-          if (yuk <= alt && yuk <= yat) { py = b.y1 + r; ekle(0, 1, 0); }
+          const yat = _s[2], yuk = ty - py, alt = py - b.y0;
+          if (yuk <= alt && yuk <= yat) { py = ty + r; ekle(0, 1, 0); }
           else if (alt <= yat) { py = b.y0 - r; ekle(0, -1, 0); }
           else {
             let ux = _s[0] - px, uz = _s[1] - pz; const L = Math.hypot(ux, uz);
@@ -346,8 +384,21 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
   function prizmaIsin(b, ox, oy, oz, dx, dy, dz, best) {
     let bt = best, ok = false;
     if (dy < 0) { // üst yüz (yalnız yukarıdan)
-      const t = (b.y1 - oy) / dy;
-      if (t > 1e-4 && t < bt && icerde(b, ox + dx * t, oz + dz * t)) { bt = t; ok = true; _ph.nx = 0; _ph.ny = 1; _ph.nz = 0; }
+      if (b.kirma) { // kırma çatı yüzeyi: giriş yüksekliğinden düz seviyeye adım adım
+        const ta = (b.y1 + b.kirma.hr - oy) / dy, tb = (b.y1 - oy) / dy;
+        let tp = ta > 1e-4 ? ta : 1e-4;
+        if (tb > tp) {
+          const dt = (tb - tp) / 10;
+          for (let q = 0; q <= 10; q++, tp += dt) {
+            if (tp >= bt) break;
+            const x = ox + dx * tp, z = oz + dz * tp;
+            if (icerde(b, x, z) && oy + dy * tp <= b.y1 + catiH(b, x, z)) { bt = tp; ok = true; _ph.nx = 0; _ph.ny = 1; _ph.nz = 0; break; }
+          }
+        }
+      } else {
+        const t = (b.y1 - oy) / dy;
+        if (t > 1e-4 && t < bt && icerde(b, ox + dx * t, oz + dz * t)) { bt = t; ok = true; _ph.nx = 0; _ph.ny = 1; _ph.nz = 0; }
+      }
     }
     const E = b.kenar;
     for (let k = 0; k < E.length; k++) { // duvarlar (yalnız dışarıdan giren)
@@ -456,7 +507,7 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
       const l = hucre[c * GNX + a];
       for (let k = 0; k < l.length; k++) {
         const b = binalar[l[k]];
-        if (pos.y > b.y1 + 3) continue;
+        if (pos.y > b.y1 + 3 + (b.kirma ? b.kirma.hr : 0)) continue;
         if (pos.x < b.minx - pay || pos.x > b.maxx + pay || pos.z < b.minz - pay || pos.z > b.maxz + pay) continue;
         if (en && b.y1 <= en.y1) continue;
         if (icerde(b, pos.x, pos.z) || sinirUzak(b, pos.x, pos.z) <= pay) en = b;
@@ -479,12 +530,12 @@ export function haritaHazirla(T, veri, katDuzelt, secenek = {}) {
     }
     return new T.Vector3(b.px, b.y1, b.pz);
   }
-  const catiBinalari = binalar.filter(b => b.yuk >= 9);
+  const catiBinalari = binalar.filter(b => b.yuk >= 9 && !b.kirma);
   function rastgeleCati() {
     const l = catiBinalari.length ? catiBinalari : binalar;
     return rastgeleCatiB(l[Math.floor(Math.random() * l.length)]);
   }
-  function catiNoktalari(minH = 12) { return binalar.filter(b => b.yuk >= minH).map(b => b.catiNokta.clone()); }
+  function catiNoktalari(minH = 12) { return binalar.filter(b => b.yuk >= minH && !b.kirma).map(b => b.catiNokta.clone()); }
 
   // ---------- yollar: segmentler + graf (yalnız araç yolları) ----------
   const aracYollari = veri.yollar.filter(y => y.arac_yolu && y.kopru_tunel !== 'tunel');

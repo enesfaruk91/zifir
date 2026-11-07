@@ -414,7 +414,7 @@ def js_test_gorsel_kutu() -> str:
       if (G.sehir.kesin) { // gerçek harita: birleşik duvar geometrisi köşeleri == fizik çokgeni; fizik katı mı
         const gor = new Set(); let tepe = 0;
         G.sahne.traverse(o => {
-          if (!o.isMesh || !o.geometry.attributes.aSd) return;
+          if (!o.isMesh || !o.geometry.attributes.aWc) return;
           const pa = o.geometry.attributes.position;
           for (let i = 0; i < pa.count; i++) { gor.add(pa.getX(i).toFixed(2) + ',' + pa.getZ(i).toFixed(2) + ',' + pa.getY(i).toFixed(2)); tepe++; }
         });

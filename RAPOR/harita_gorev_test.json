@@ -1,0 +1,493 @@
+[
+ {
+  "ad": "[varsayılan] küre sayısı 60 (tur 0)",
+  "ok": true,
+  "detay": 60
+ },
+ {
+  "ad": "[varsayılan] küre sayısı 60 (tur 1)",
+  "ok": true,
+  "detay": 60
+ },
+ {
+  "ad": "[varsayılan] küre sayısı 60 (tur 2)",
+  "ok": true,
+  "detay": 60
+ },
+ {
+  "ad": "[varsayılan] küre sayısı 60 (tur 3)",
+  "ok": true,
+  "detay": 60
+ },
+ {
+  "ad": "[varsayılan] küreler bina içinde değil",
+  "ok": true,
+  "detay": {
+   "kureIc": 0,
+   "kurSay": 240
+  }
+ },
+ {
+  "ad": "[varsayılan] küreler sınır içinde",
+  "ok": true,
+  "detay": {
+   "kureSinir": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] küre yüksekliği zemine göre 0.5-16 m",
+  "ok": true,
+  "detay": {
+   "kureYuk": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] küreler ulaşılabilir (yürü/zıpla ya da ağ ankrajı)",
+  "ok": true,
+  "detay": {
+   "kureUlas": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] küre yayılımı: >=6 farklı 200 m hücresi",
+  "ok": true,
+  "detay": {
+   "hucre": 34
+  }
+ },
+ {
+  "ad": "[varsayılan] küreler birbirine >=2 m",
+  "ok": true,
+  "detay": {
+   "minUz": 42.807272734844865
+  }
+ },
+ {
+  "ad": "[varsayılan] kedi bir çatının üstünde (poligon içi, y=çatı)",
+  "ok": true,
+  "detay": {
+   "kediOk": 12
+  }
+ },
+ {
+  "ad": "[varsayılan] kedi bina hacminin içinde değil",
+  "ok": true,
+  "detay": {
+   "kediIc": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] kedi çatı kenarından >=0.8 m içeride",
+  "ok": true,
+  "detay": {
+   "kediKenar": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] kedi görev metni için sokak/bina adı bulunur (>=8/12)",
+  "ok": true,
+  "detay": {
+   "kediAd": 12
+  }
+ },
+ {
+  "ad": "[varsayılan] halka rotası 8 halka üretir (6/6)",
+  "ok": true,
+  "detay": {
+   "halkaTamam": 6,
+   "yollar": [
+    "Atış Caddesi"
+   ]
+  }
+ },
+ {
+  "ad": "[varsayılan] halka çemberi bina içinden geçmez",
+  "ok": true,
+  "detay": {
+   "hIc": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] halkalar arası doğru bina içinden geçmez",
+  "ok": true,
+  "detay": {
+   "hSapma": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] halkalar arası 15-80 m",
+  "ok": true,
+  "detay": {
+   "hAra": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] halkaya yakın ağ tutunma binası var",
+  "ok": true,
+  "detay": {
+   "hAnk": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] halka zeminden yeterince yüksek",
+  "ok": true,
+  "detay": {
+   "hYukPay": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] patron alanı: bina içinde değil, geniş (>=25 m boşluk)",
+  "ok": true,
+  "detay": {
+   "x": -36.31,
+   "z": -509.19000000000005,
+   "bosluk": 62,
+   "ad": "Mehmet Ali Altun Parkı"
+  }
+ },
+ {
+  "ad": "[varsayılan] patron alanı adlı bir park içinde",
+  "ok": true,
+  "detay": {
+   "parkta": "Mehmet Ali Altun Parkı"
+  }
+ },
+ {
+  "ad": "[varsayılan] düşman: 7 sn pencerede takılan robot oranı <= %8 (egim=false)",
+  "ok": true,
+  "detay": {
+   "pencere": 51,
+   "takilan": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] düşman: robot bina hacmi içinde değil",
+  "ok": true,
+  "detay": {
+   "robotIcKare": 0,
+   "kareR": 11300
+  }
+ },
+ {
+  "ad": "[varsayılan] düşman: dron bina hacmi içinden geçmez",
+  "ok": true,
+  "detay": {
+   "dronIcKare": 0,
+   "kareD": 7436
+  }
+ },
+ {
+  "ad": "[varsayılan] düşman: dron yere/çatıya gömülmez (y > zemin+0.3)",
+  "ok": true,
+  "detay": {
+   "dronYerAlti": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] düşman: robot havada kalmaz / gömülmez (egim=false)",
+  "ok": true,
+  "detay": {
+   "havada": 0,
+   "gomulu": 0,
+   "kareR": 11300
+  }
+ },
+ {
+  "ad": "[varsayılan] bilgi: nav kapalı karşılaştırma",
+  "ok": true,
+  "detay": {
+   "pencere": 53,
+   "takilan": 0,
+   "dronIc": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] kamyonet: 5x60 sn yol grafiğinde kalır (kenardan >3.5 m uzak <=%1)",
+  "ok": true,
+  "detay": {
+   "yolDisiOrnek": 0,
+   "maxSapma": 0,
+   "ornek": 3000
+  }
+ },
+ {
+  "ad": "[varsayılan] kamyonet: bina içine girmez",
+  "ok": true,
+  "detay": {
+   "kIc": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] kamyonet: her koşuda ilerler (>=300 m / 60 sn) ve birçok kavşaktan geçer (>=6 düğüm)",
+  "ok": true,
+  "detay": {
+   "kmMin": 754,
+   "kmToplam": 3824,
+   "dugum": 77,
+   "sokaklar": [
+    "Gülhane Caddesi",
+    "Andaç Sokak",
+    "Çavdar Sokak",
+    "Gelinkaya Sokak",
+    "Rençber Sokak",
+    "Bilinç Sokak",
+    "27. Sokak",
+    "Gülgün Sokak",
+    "İsmail Cambaz Sokak",
+    "Söylev Sokak",
+    "Basın Caddesi",
+    "14. Sokak",
+    "Göksel Sokak",
+    "Camiönü Sokak",
+    "Refik Saydam Caddesi",
+    "Karaelmas Sokak"
+   ]
+  }
+ },
+ {
+  "ad": "[varsayılan] kamyonet: zemini izler (egim=false)",
+  "ok": true,
+  "detay": {
+   "kHav": 0,
+   "kGom": 0
+  }
+ },
+ {
+  "ad": "[varsayılan] araç: kare başı sıçrama yok (dönüşte şerit atlama)",
+  "ok": true,
+  "detay": {
+   "sicrama": 0,
+   "maxKareHareket": 1.23
+  }
+ },
+ {
+  "ad": "[varsayılan] araç: aynı/kesişen yönde 3 m içinde üst üste binme (örnek başına) <= 3",
+  "ok": true,
+  "detay": {
+   "ust": 1,
+   "durdurulan": 0,
+   "arac": 70
+  }
+ },
+ {
+  "ad": "[varsayılan] zincir: küreler",
+  "ok": true,
+  "detay": "5 küre"
+ },
+ {
+  "ad": "[varsayılan] zincir: kedi",
+  "ok": true,
+  "detay": "Gazeteciler Sokak"
+ },
+ {
+  "ad": "[varsayılan] zincir: robotlar (olay)",
+  "ok": true,
+  "detay": ""
+ },
+ {
+  "ad": "[varsayılan] zincir: halkalar",
+  "ok": true,
+  "detay": "8 adım Yankılar Sokak"
+ },
+ {
+  "ad": "[varsayılan] zincir: kamyonet (gerçek yumruk olayı)",
+  "ok": true,
+  "detay": "3 yumruk"
+ },
+ {
+  "ad": "[varsayılan] zincir: patron (açık alanda doğdu, yenildi olarak işaretlendi)",
+  "ok": true,
+  "detay": "Mehmet Ali Altun Parkı"
+ },
+ {
+  "ad": "[varsayılan] zincir: görev açıklamaları gerçek yer adı içerir (>=3)",
+  "ok": true,
+  "detay": [
+   "Çalınan ışık kürelerinden 5 tanesini topla: parklarda, çatılarda ve sokakların üstünde dağıldılar (Şehit Jandarma Er Ali Kayhan Parkı, Tuncay Altıntaş Parkı dahil).",
+   "Gazeteciler Sokak üstündeki bir apartmanın çatısında mahsur kalan kediyi bul!",
+   "8 Pas Robotunu veya dronu yen! (F yumruk, E kamçı)",
+   "Yankılar Sokak boyunca uzanan neon halkalardan sırayla geç!",
+   "Hırsız robot kamyoneti Yankılar Sokak üzerinde kaçıyor! Yakala ve yumrukla!",
+   "Mehmet Ali Altun Parkı içinde Dev Pas Robotun SIRTINDAKİ parlayan pile arkadan vur!"
+  ]
+ },
+ {
+  "ad": "[varsayılan] mini harita çizildi (bina/yol pikselleri)",
+  "ok": true,
+  "detay": {
+   "renkli": 5946,
+   "yesil": 241
+  }
+ },
+ {
+  "ad": "[varsayılan] oyun hata listesi boş",
+  "ok": true,
+  "detay": "[]"
+ },
+ {
+  "ad": "[egim=1] düşman: 7 sn pencerede takılan robot oranı <= %8 (egim=true)",
+  "ok": true,
+  "detay": {
+   "pencere": 98,
+   "takilan": 0
+  }
+ },
+ {
+  "ad": "[egim=1] düşman: robot bina hacmi içinde değil",
+  "ok": true,
+  "detay": {
+   "robotIcKare": 0,
+   "kareR": 21312
+  }
+ },
+ {
+  "ad": "[egim=1] düşman: dron bina hacmi içinden geçmez",
+  "ok": true,
+  "detay": {
+   "dronIcKare": 0,
+   "kareD": 16958
+  }
+ },
+ {
+  "ad": "[egim=1] düşman: dron yere/çatıya gömülmez (y > zemin+0.3)",
+  "ok": true,
+  "detay": {
+   "dronYerAlti": 0
+  }
+ },
+ {
+  "ad": "[egim=1] düşman: robot havada kalmaz / gömülmez (egim=true)",
+  "ok": true,
+  "detay": {
+   "havada": 0,
+   "gomulu": 0,
+   "kareR": 21312
+  }
+ },
+ {
+  "ad": "[egim=1] bilgi: nav kapalı karşılaştırma",
+  "ok": true,
+  "detay": {
+   "pencere": 35,
+   "takilan": 2,
+   "dronIc": 0
+  }
+ },
+ {
+  "ad": "[egim=1] kamyonet: 5x60 sn yol grafiğinde kalır (kenardan >3.5 m uzak <=%1)",
+  "ok": true,
+  "detay": {
+   "yolDisiOrnek": 0,
+   "maxSapma": 0.2,
+   "ornek": 3000
+  }
+ },
+ {
+  "ad": "[egim=1] kamyonet: bina içine girmez",
+  "ok": true,
+  "detay": {
+   "kIc": 0
+  }
+ },
+ {
+  "ad": "[egim=1] kamyonet: her koşuda ilerler (>=300 m / 60 sn) ve birçok kavşaktan geçer (>=6 düğüm)",
+  "ok": true,
+  "detay": {
+   "kmMin": 753,
+   "kmToplam": 3838,
+   "dugum": 87,
+   "sokaklar": [
+    "Çavdar Sokak",
+    "Gelinkaya Sokak",
+    "Rençber Sokak",
+    "Ahmet Vefik Paşa Caddesi",
+    "Atış Caddesi",
+    "Adalar Sokak",
+    "Gülgün Sokak",
+    "Selçuklu Caddesi",
+    "Özden Sokak",
+    "15. Cadde",
+    "Basın Caddesi"
+   ]
+  }
+ },
+ {
+  "ad": "[egim=1] kamyonet: zemini izler (egim=true)",
+  "ok": true,
+  "detay": {
+   "kHav": 0,
+   "kGom": 0
+  }
+ },
+ {
+  "ad": "[egim=1] araç: kare başı sıçrama yok (dönüşte şerit atlama)",
+  "ok": true,
+  "detay": {
+   "sicrama": 0,
+   "maxKareHareket": 1.23
+  }
+ },
+ {
+  "ad": "[egim=1] araç: aynı/kesişen yönde 3 m içinde üst üste binme (örnek başına) <= 3",
+  "ok": true,
+  "detay": {
+   "ust": 3,
+   "durdurulan": 0,
+   "arac": 70
+  }
+ },
+ {
+  "ad": "[egim=1] araç: eğimde y=arazi",
+  "ok": true,
+  "detay": {
+   "havaA": 0
+  }
+ },
+ {
+  "ad": "[egim=1] zincir: küreler",
+  "ok": true,
+  "detay": "7 küre"
+ },
+ {
+  "ad": "[egim=1] zincir: kedi",
+  "ok": true,
+  "detay": "Basın Caddesi"
+ },
+ {
+  "ad": "[egim=1] zincir: robotlar (olay)",
+  "ok": true,
+  "detay": ""
+ },
+ {
+  "ad": "[egim=1] zincir: halkalar",
+  "ok": true,
+  "detay": "8 adım Basın Caddesi"
+ },
+ {
+  "ad": "[egim=1] zincir: kamyonet (gerçek yumruk olayı)",
+  "ok": true,
+  "detay": "3 yumruk"
+ },
+ {
+  "ad": "[egim=1] zincir: patron (açık alanda doğdu, yenildi olarak işaretlendi)",
+  "ok": true,
+  "detay": "Mehmet Ali Altun Parkı"
+ },
+ {
+  "ad": "[egim=1] zincir: görev açıklamaları gerçek yer adı içerir (>=3)",
+  "ok": true,
+  "detay": [
+   "Çalınan ışık kürelerinden 7 tanesini topla: parklarda, çatılarda ve sokakların üstünde dağıldılar (Tuana Parkı, Tuncay Altıntaş Parkı dahil).",
+   "Basın Caddesi üstündeki bir apartmanın çatısında mahsur kalan kediyi bul!",
+   "12 Pas Robotunu veya dronu yen! (F yumruk, E kamçı)",
+   "Basın Caddesi boyunca uzanan neon halkalardan sırayla geç!",
+   "Hırsız robot kamyoneti Gazeteciler Sokak üzerinde kaçıyor! Yakala ve yumrukla!",
+   "Mehmet Ali Altun Parkı içinde Dev Pas Robotun SIRTINDAKİ parlayan pile arkadan vur!"
+  ]
+ },
+ {
+  "ad": "[egim=1] oyun hata listesi boş",
+  "ok": true,
+  "detay": "[]"
+ }
+]

@@ -905,7 +905,35 @@ function miniCiz(G, px, pz, fx, fz, hedef) {
   x.fillStyle = 'rgba(10,6,26,.88)'; x.fillRect(0, 0, S, S);
   const rot = -Math.PI / 2 - Math.atan2(fz, fx);
   x.save(); x.translate(c, c); x.rotate(rot); x.scale(olc, olc); x.translate(-px, -pz);
-  // yol ızgarası ipucu: alt zemin açık
+  // parklar (gerçek harita alanları) + yollar (yol grafiği, gerçek genişlik)
+  const al = G.harita?.veri?.alanlar;
+  if (al) {
+    x.fillStyle = 'rgba(40,150,95,.28)';
+    for (const a of al) {
+      if (a.tur !== 'park' && a.tur !== 'cimen' && a.tur !== 'orman') continue;
+      const h = a.halka; if (!h || h.length < 3) continue;
+      let yakin = false;
+      for (let i = 0; i < h.length; i += 3) if (Math.abs(h[i][0] - px) < MR * 1.6 && Math.abs(h[i][1] - pz) < MR * 1.6) { yakin = true; break; }
+      if (!yakin) continue;
+      x.beginPath(); h.forEach((q, i) => (i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]))); x.closePath(); x.fill();
+    }
+  }
+  const ag = G.sehir?.yolAgi;
+  if (ag?.kenarlar) {
+    const D = ag.dugumler, lim2 = MR * 1.5; x.lineCap = 'round';
+    for (const pass of [0, 1]) {
+      x.strokeStyle = pass ? 'rgba(210,200,245,.55)' : 'rgba(120,110,170,.4)';
+      x.beginPath();
+      for (const k of ag.kenarlar) {
+        if (pass && !(k.tur === 'secondary' || k.tur === 'tertiary')) continue;
+        const A = D[k.a], B = D[k.b];
+        if (Math.abs(A.x - px) > lim2 && Math.abs(B.x - px) > lim2) continue;
+        if (Math.abs(A.z - pz) > lim2 && Math.abs(B.z - pz) > lim2) continue;
+        x.moveTo(A.x, A.z); x.lineTo(B.x, B.z);
+      }
+      x.lineWidth = pass ? 7 : 4.5; x.stroke();
+    }
+  }
   const bs = G.sehir?.binalar;
   if (bs) {
     const lim = MR * 1.5;
@@ -931,6 +959,15 @@ function miniCiz(G, px, pz, fx, fz, hedef) {
     if (Math.hypot(d.konum.x - px, d.konum.z - pz) > MR) continue;
     x.beginPath(); x.arc(d.konum.x, d.konum.z, (d.dev ? 5 : 2.8) / olc * 1.3 * 0.5 + 1.5, 0, 6.283); x.fill();
   }
+  // görev hedefleri (küreler, halkalar, kedi): altın noktalar
+  const hl = G.gorev?.hedefler?.();
+  if (hl?.length) {
+    x.fillStyle = '#ffd060'; x.strokeStyle = 'rgba(10,5,28,.9)'; x.lineWidth = 1.2 / olc;
+    for (const h of hl) {
+      if (Math.abs(h.x - px) > MR || Math.abs(h.z - pz) > MR) continue;
+      x.beginPath(); x.arc(h.x, h.z, 3.6, 0, 6.283); x.fill(); x.stroke();
+    }
+  }
   x.restore();
   // görev işareti
   if (hedef) {
@@ -954,8 +991,8 @@ function miniCiz(G, px, pz, fx, fz, hedef) {
   x.fillStyle = '#fff'; x.strokeStyle = '#2ef2e0'; x.lineWidth = 2; x.shadowColor = '#2ef2e0'; x.shadowBlur = 8;
   x.beginPath(); x.moveTo(0, -10); x.lineTo(8, 9); x.lineTo(0, 4); x.lineTo(-8, 9); x.closePath(); x.fill(); x.stroke(); x.restore();
   // kuzey işareti
-  x.save(); x.translate(c, c); x.rotate(rot + Math.PI / 2); x.translate(0, -(c - 14));
-  x.rotate(-(rot + Math.PI / 2)); x.fillStyle = '#ff9d2e'; x.font = '900 17px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('K', 0, 0); x.restore();
+  x.save(); x.translate(c, c); x.rotate(rot); x.translate(0, -(c - 14));
+  x.rotate(-rot); x.fillStyle = '#ff9d2e'; x.font = '900 17px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('K', 0, 0); x.restore();
 }
 
 let _hedefV = null;

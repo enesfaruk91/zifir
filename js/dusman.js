@@ -466,6 +466,7 @@ export function kur(G) {
     e.konum.copy(konum); e.canli = true; e.grup.visible = true;
     e.sersem = 0; e.cekil = 0; e.vy = 0; e.sal = -1; e.vurus = 0; e.pop = 0; e.itme.set(0, 0, 0); e.bekle = rnd(0.8, 2);
     e.olumT = 0; e.flash = 0; parlat(e, false); e.hava = false;
+    e.kizgin = 0; e.devN = null; e.kacT = 0; e.devT = 0; e.kacYon = 0; e.devriye = null;
     if (e.mixer) { e.mixer.stopAllAction(); e.cur = null; oyna(e, 'dur', false, 1, 0); }
     if (e.tur === 'robot') { e.canMax = e.dev ? 100 : 40; e.hizMax = e.dev ? 3 : rnd(3.2, 4.2); }
     else if (e.tur === 'dron') { e.canMax = 40; e.hizMax = 8; e.yar = rnd(8, 15); e.dusuyor = false; e.grup.rotation.set(0, 0, 0); }
@@ -482,7 +483,6 @@ export function kur(G) {
     const p = oyuncuKonum(), s = G.sehir;
     for (let i = 0; i < 8; i++) {
       let v = null;
-      if (tur === 'dron') break;
       if (s) v = tur === 'dron' ? s.rastgeleCati?.() : (Math.random() < 0.7 ? s.sokakNoktasi?.() : s.rastgeleCati?.());
       if (!v) break;
       const d = Math.hypot(v.x - p.x, v.z - p.z);
@@ -507,36 +507,73 @@ export function kur(G) {
     return e;
   }
 
-  // kamyonet: yol boyunca
-  function yolSec(e, konumHedefi) {
-    let yollar = G.sehir?.yollar;
-    if (!yollar || !yollar.length) {
-      yollar = [{ x1: -80, z1: -80, x2: 80, z2: -80 }, { x1: 80, z1: -80, x2: 80, z2: 80 }, { x1: 80, z1: 80, x2: -80, z2: 80 }, { x1: -80, z1: 80, x2: -80, z2: -80 }];
+  // kamyonet: yol grafiğinde (G.sehir.yolAgi) gerçek sokaklardan
+  let _agSentetik = null, _kenarMap = null, _kenarAg = null, _yolAdMap = null;
+  function agim() {
+    const ag = G.sehir?.yolAgi;
+    if (ag?.dugumler?.length) return ag;
+    if (!_agSentetik) { // şehir/graf yoksa 160 m'lik kare
+      const d = [{ x: -80, z: -80, komsu: [1, 3] }, { x: 80, z: -80, komsu: [0, 2] }, { x: 80, z: 80, komsu: [1, 3] }, { x: -80, z: 80, komsu: [2, 0] }];
+      _agSentetik = { dugumler: d, kenarlar: [[0, 1], [1, 2], [2, 3], [3, 0]].map(([a, b]) => ({ a, b, L: 160, genislik: 8, tur: 'residential', yol: 'x' })) };
     }
-    e.yollar = yollar;
+    return _agSentetik;
+  }
+  function kenarBul(a, b) {
+    const ag = agim();
+    if (_kenarAg !== ag) { _kenarAg = ag; _kenarMap = new Map(); for (const k of ag.kenarlar) { _kenarMap.set(k.a + '_' + k.b, k); _kenarMap.set(k.b + '_' + k.a, k); } }
+    return _kenarMap.get(a + '_' + b);
+  }
+  function yolAdi(id) {
+    if (!_yolAdMap) _yolAdMap = new Map((G.harita?.veri?.yollar || []).map(y => [y.id, y.ad || '']));
+    return _yolAdMap.get(id) || '';
+  }
+  function kamHedefAyarla(e) { // e.nA -> e.nB kenarında sağ şerit hedefi
+    const D = agim().dugumler, A = D[e.nA], B = D[e.nB];
+    const ex = B.x - A.x, ez = B.z - A.z, el = Math.hypot(ex, ez) || 1, ke = kenarBul(e.nA, e.nB);
+    const lat = Math.min((ke?.genislik || 7) / 4, 2.2);
+    e.hdf.set(B.x + ez / el * lat, 0, B.z - ex / el * lat);
+    if (ke) { const ad = yolAdi(ke.yol); if (ad) e.yolAd = ad; }
+  }
+  function yolSec(e, konumHedefi) {
+    const ag = agim(), D = ag.dugumler;
     const p = konumHedefi || oyuncuKonum();
     let en = null, enFark = 1e9, u = 0.5;
-    for (let i = 0; i < 12; i++) {
-      const r = yollar[(Math.random() * yollar.length) | 0], uu = Math.random();
-      const x = r.x1 + (r.x2 - r.x1) * uu, z = r.z1 + (r.z2 - r.z1) * uu;
-      const f = Math.abs(Math.hypot(x - p.x, z - p.z) - 85);
+    for (let i = 0; i < 24; i++) {
+      const r = ag.kenarlar[(Math.random() * ag.kenarlar.length) | 0];
+      if (r.L < 20 || r.tur === 'service' || r.tur === 'secondary_link') continue;
+      const uu = Math.random(), A = D[r.a], B = D[r.b];
+      const x = A.x + (B.x - A.x) * uu, z = A.z + (B.z - A.z) * uu;
+      if (G.sehir?.sinirIci && !G.sehir.sinirIci(x, z, 25)) continue;
+      const f = Math.abs(Math.hypot(x - p.x, z - p.z) - 90);
       if (f < enFark) { enFark = f; en = r; u = uu; }
     }
-    e.road = en;
-    e.konum.set(en.x1 + (en.x2 - en.x1) * u, 0, en.z1 + (en.z2 - en.z1) * u);
+    if (!en) en = ag.kenarlar[0];
+    const ters = Math.random() < 0.5;
+    e.nA = ters ? en.b : en.a; e.nB = ters ? en.a : en.b;
+    const A = D[e.nA], B = D[e.nB];
+    e.konum.set(A.x + (B.x - A.x) * (ters ? 1 - u : u), 0, A.z + (B.z - A.z) * (ters ? 1 - u : u));
     e.konum.y = zemin(e.konum.x, e.konum.z);
-    if (Math.random() < 0.5) e.hdf = V(en.x2, 0, en.z2); else e.hdf = V(en.x1, 0, en.z1);
-    e.yaw = Math.atan2(e.hdf.x - e.konum.x, e.hdf.z - e.konum.z);
+    e.yolAd = '';
+    if (!e.hdf) e.hdf = V();
+    kamHedefAyarla(e);
+    e.yaw = Math.atan2(B.x - A.x, B.z - A.z);
   }
-  function kamSonraki(e) {
-    const bx = e.hdf.x, bz = e.hdf.z, adaylar = [];
-    for (const r of e.yollar) {
-      if (r === e.road) continue;
-      if (Math.hypot(r.x1 - bx, r.z1 - bz) < 12) adaylar.push([r, r.x2, r.z2]);
-      else if (Math.hypot(r.x2 - bx, r.z2 - bz) < 12) adaylar.push([r, r.x1, r.z1]);
+  function kamSonraki(e) { // B düğümünde: düz git, ana yolu ve oyuncudan uzaklaşmayı tercih et
+    const D = agim().dugumler, A = D[e.nA], B = D[e.nB], p = oyuncuKonum();
+    const dx = B.x - A.x, dz = B.z - A.z, l = Math.hypot(dx, dz) || 1;
+    let en = -1, sk = -9;
+    for (const k of B.komsu) {
+      if (k === e.nA && B.komsu.length > 1) continue;
+      if (G.sehir?.sinirIci && !G.sehir.sinirIci(D[k].x, D[k].z, 12)) continue; // harita sınırının dışına çıkma
+      const ke = kenarBul(e.nB, k), ex = D[k].x - B.x, ez = D[k].z - B.z, el = Math.hypot(ex, ez) || 1;
+      const duz = (dx * ex + dz * ez) / (l * el);
+      const uzak = ((B.x - p.x) * ex + (B.z - p.z) * ez) / ((Math.hypot(B.x - p.x, B.z - p.z) || 1) * el);
+      const ceza = (ke?.tur === 'service' ? 0.8 : 0) + (ke?.L < 6 ? 0.4 : 0);
+      const puan = duz * 0.8 + uzak * 0.7 + Math.random() * 0.4 - ceza;
+      if (puan > sk) { sk = puan; en = k; }
     }
-    if (adaylar.length) { const a = adaylar[(Math.random() * adaylar.length) | 0]; e.road = a[0]; e.hdf.set(a[1], 0, a[2]); }
-    else { const r = e.road; const geri = Math.hypot(r.x1 - bx, r.z1 - bz) > Math.hypot(r.x2 - bx, r.z2 - bz); e.hdf.set(geri ? r.x1 : r.x2, 0, geri ? r.z1 : r.z2); }
+    if (en < 0) en = e.nA;
+    e.nA = e.nB; e.nB = en; kamHedefAyarla(e);
   }
 
   // ---------- hasar ----------
@@ -582,7 +619,7 @@ export function kur(G) {
     }
   }
   function vur(e, miktar, yon, itmeK = 6, havaya = false) {
-    e.can -= miktar; e.pop = 0.25;
+    e.can -= miktar; e.pop = 0.25; if (!e.dev) e.kizgin = 8;
     if (!e.dev) e.itme.addScaledVector(yon, e.tur === 'kamyonet' ? 0 : itmeK);
     if (havaya && !e.dev && e.tur === 'robot') { e.vy = 13; e.konum.y += 0.05; e.itme.multiplyScalar(1.3); }
     if (e.mats) { e.flash = 0.08; parlat(e, true); }
@@ -678,16 +715,35 @@ export function kur(G) {
       if (h.r > (h.maks || 18)) { h.aktif = false; h.m.visible = false; }
     }
   }
+  function devriyeNoktasi(e) {
+    const sh = G.sehir; e.devT = rnd(8, 14);
+    for (let i = 0; i < 8; i++) {
+      const v = sh?.rastgeleSokakNoktasi?.() || sh?.sokakNoktasi?.();
+      if (!v) break;
+      const d = Math.hypot(v.x - e.konum.x, v.z - e.konum.z);
+      if (d > 12 && d < 55) { e.devN = V(v.x, v.y, v.z); return; }
+    }
+    const a = rnd(0, 6.283); e.devN = V(e.konum.x + Math.cos(a) * 20, 0, e.konum.z + Math.sin(a) * 20);
+  }
   function robotGuncelle(e, dt, p, dx, dz, d) {
     const dev = e.dev;
     if (e.sersem > 0) { e.sersem -= dt; e.sal = -1; }
     else if (e.cekil <= 0) {
-      const hy = Math.atan2(dx, dz);
+      // devriye: oyuncu uzaktaysa ve robot kışkırtılmamışsa sokak noktaları arasında dolaş
+      let tx = dx, tz = dz, dur = dev ? 7 : 2.4, hizK = 1;
+      const dev_ = dev || e.vitrin;
+      if (G.dusman.nav !== false && !dev_ && d > 70 && !(e.kizgin > 0)) {
+        e.devT -= dt;
+        if (!e.devN || e.devT <= 0 || Math.hypot(e.devN.x - e.konum.x, e.devN.z - e.konum.z) < 3) devriyeNoktasi(e);
+        tx = e.devN.x - e.konum.x; tz = e.devN.z - e.konum.z; dur = 1; hizK = 0.55;
+      } else e.devN = null;
+      if (e.kizgin > 0) e.kizgin -= dt;
+      let hy = Math.atan2(tx, tz);
+      if (e.kacT > 0) { e.kacT -= dt; hy = e.kacAci; } // duvara çarptı: duvar boyunca kay
       const don = (dev ? 0.7 : 3) * dt, f = aciFark(e.yaw, hy);
       e.yaw += Math.max(-don, Math.min(don, f));
-      const dur = dev ? 7 : 2.4;
       let yuruyor = false;
-      if (d > dur && e.sal < 0) { yuruyor = true; const h = e.hizMax; e.konum.x += Math.sin(e.yaw) * h * dt; e.konum.z += Math.cos(e.yaw) * h * dt; e.faz += dt * h * 2.6; }
+      if (Math.hypot(tx, tz) > dur && e.sal < 0) { yuruyor = true; const h = e.hizMax * hizK; e.konum.x += Math.sin(e.yaw) * h * dt; e.konum.z += Math.cos(e.yaw) * h * dt; e.faz += dt * h * 2.6; }
       e.bekle -= dt;
       const menz = dev ? 9 : 3.2;
       if (e.sal < 0 && e.bekle <= 0 && d < menz) { e.sal = dev ? 1.1 : 0.55; e.salSure = e.sal; if (e.act?.sal) oyna(e, 'sal', true, Math.max(0.6, (e.clip.sal || 1) / (e.salSure + 0.15)), 0.1); yuruyor = false; }
@@ -733,9 +789,16 @@ export function kur(G) {
       if (TMP.length() > 2) { TMP.normalize(); e.konum.addScaledVector(TMP, 35 * dt); }
     } else if (e.sersem <= 0) {
       e.ang += dt * 0.25;
-      const gy = zemin(e.konum.x, e.konum.z);
-      const hx = p.x + Math.cos(e.ang) * e.yar, hz = p.z + Math.sin(e.ang) * e.yar;
-      const hyy = Math.max(p.y + 4.5, gy + 6) + Math.sin(G.t * 1.3 + e.faz) * 1.2;
+      const uzak = !e.vitrin && !(e.kizgin > 0) && Math.hypot(p.x - e.konum.x, p.z - e.konum.z) > 75;
+      if (uzak && !e.devriye) e.devriye = V(e.konum.x, 0, e.konum.z);
+      if (!uzak) e.devriye = null;
+      // ilerideki en yüksek zemin (bina/çatı) üstünden geç: duvara girmesin
+      let gy = zemin(e.konum.x, e.konum.z);
+      { const ax = (e.devriye ? e.devriye.x + Math.cos(e.ang * 2) * 7 : p.x + Math.cos(e.ang) * e.yar) - e.konum.x, az = (e.devriye ? e.devriye.z + Math.sin(e.ang * 2) * 7 : p.z + Math.sin(e.ang) * e.yar) - e.konum.z, al_ = Math.hypot(ax, az) || 1;
+        for (const k of [3, 7, 12]) gy = Math.max(gy, zemin(e.konum.x + ax / al_ * k, e.konum.z + az / al_ * k));
+        for (let q = 0; q < 4; q++) gy = Math.max(gy, zemin(e.konum.x + (q & 1 ? 4 : -4) * (q < 2 ? 1 : 0), e.konum.z + (q & 1 ? 4 : -4) * (q < 2 ? 0 : 1))); }
+      const hx = e.devriye ? e.devriye.x + Math.cos(e.ang * 2) * 7 : p.x + Math.cos(e.ang) * e.yar, hz = e.devriye ? e.devriye.z + Math.sin(e.ang * 2) * 7 : p.z + Math.sin(e.ang) * e.yar;
+      const hyy = (e.devriye ? gy + 9 : Math.max(p.y + 4.5, gy + 6)) + Math.sin(G.t * 1.3 + e.faz) * 1.2;
       TMP.set(hx - e.konum.x, hyy - e.konum.y, hz - e.konum.z);
       const l = TMP.length();
       if (l > 0.5) e.konum.addScaledVector(TMP, Math.min(e.hizMax, l * 0.8) * dt / l);
@@ -764,16 +827,16 @@ export function kur(G) {
   }
 
   function kamGuncelle(e, dt, p, d) {
-    if (!e.hdf) yolSec(e);
+    if (!e.hdf || e.nA === undefined) yolSec(e);
     if (e.sersem > 0) { e.sersem -= dt; e.ic.rotation.z = Math.sin(G.t * 30) * 0.03; return; }
     e.ic.rotation.z = 0;
     const hy = Math.atan2(e.hdf.x - e.konum.x, e.hdf.z - e.konum.z), f = aciFark(e.yaw, hy);
-    e.yaw += Math.max(-2 * dt, Math.min(2 * dt, f));
-    let h = e.hizMax * (Math.abs(f) > 0.7 ? 0.45 : 1);
+    e.yaw += Math.max(-2.4 * dt, Math.min(2.4 * dt, f));
+    let h = e.hizMax * (Math.abs(f) > 0.7 ? 0.45 : Math.abs(f) > 0.35 ? 0.75 : 1);
     if (d < 25) h *= 1.25;
     e.konum.x += Math.sin(e.yaw) * h * dt; e.konum.z += Math.cos(e.yaw) * h * dt;
     for (const t of e.tek) t.rotation.x += h * dt * 2;
-    if (Math.hypot(e.hdf.x - e.konum.x, e.hdf.z - e.konum.z) < 7) kamSonraki(e);
+    if (Math.hypot(e.hdf.x - e.konum.x, e.hdf.z - e.konum.z) < 4.5) kamSonraki(e);
   }
 
   function varlikGuncelle(e, dt) {
@@ -786,10 +849,22 @@ export function kur(G) {
     // itme (darbe geri tepmesi)
     if (e.itme.lengthSq() > 0.01) { e.konum.x += e.itme.x * dt; e.konum.z += e.itme.z * dt; e.itme.multiplyScalar(Math.max(0, 1 - 6 * dt)); }
     if (e.tur !== 'dron') {
-      if (e.tur === 'robot' && G.sehir?.carpis) {
+      if ((e.tur === 'robot' || e.tur === 'kamyonet') && G.sehir?.carpis) {
         TMP.set(e.konum.x, e.konum.y + 1, e.konum.z);
         const r = G.sehir.carpis(TMP, e.yr + 0.1);
-        if (r?.duzeltme) { e.konum.x += r.duzeltme.x; e.konum.z += r.duzeltme.z; }
+        if (r?.duzeltme) {
+          const ux = r.duzeltme.x, uz = r.duzeltme.z, ul = Math.hypot(ux, uz);
+          e.konum.x += ux; e.konum.z += uz;
+          if (e.tur === 'robot' && G.dusman.nav !== false && ul > 0.004 && !(e.kacT > 0)) { // duvar normali = itme yönü; teğetlerden hedefe yakın olanı seç
+            const nx = ux / ul, nz = uz / ul, ta = [-nz, nx], tb = [nz, -nx];
+            const hx = Math.sin(e.yaw), hz = Math.cos(e.yaw);
+            const sa = ta[0] * hx + ta[1] * hz, sb = tb[0] * hx + tb[1] * hz;
+            let tg = sa >= sb ? ta : tb;
+            if (e.kacYon && Math.abs(sa - sb) < 0.3) tg = e.kacYon > 0 ? ta : tb; // yönü kararsızsa öncekini koru
+            e.kacYon = tg === ta ? 1 : -1;
+            e.kacAci = Math.atan2(tg[0], tg[1]); e.kacT = 0.5;
+          }
+        }
       }
       const gy = zemin(e.konum.x, e.konum.z);
       if (gy - e.konum.y > 1.2 && e.tur === 'robot') { e.konum.x = eskiX; e.konum.z = eskiZ; }
@@ -798,6 +873,11 @@ export function kur(G) {
     }
     // görünüm
     const g = e.grup; g.position.copy(e.konum); g.rotation.y = e.yaw;
+    if (e.tur === 'kamyonet' && G.sehir?.egim && G.sehir.arazi) { // eğimde burun/kuyruk zemini izlesin
+      const fx = Math.sin(e.yaw) * 2, fz = Math.cos(e.yaw) * 2;
+      const pitch = Math.atan2(G.sehir.arazi(e.konum.x + fx, e.konum.z + fz) - G.sehir.arazi(e.konum.x - fx, e.konum.z - fz), 4);
+      g.rotation.order = 'YXZ'; g.rotation.x = -pitch;
+    }
     let sy = e.olcek, sxz = e.olcek;
     if (e.pop > 0) { e.pop -= dt; const k = Math.max(0, e.pop) * 4; sy *= 1 - 0.25 * k; sxz *= 1 + 0.15 * k; }
     g.scale.set(sxz, sy, sxz);

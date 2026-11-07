@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { haritaHazirla, rng, kimlikHash, KAT_M } from './harita_fizik.js';
+import { binalariKur, kilitTasiDokusu, bordurDokusu, asfaltDokusu } from './harita_cephe.js';
 
 const LOD_R = 150;
 const EY = new THREE.Vector3(0, 1, 0);
@@ -166,42 +167,6 @@ export function haritaKur(G, veri, katDuz, ctx) {
   const IS = { acik: { value: 1.0 }, penc: { value: 1.0 }, zemin: 1.0 };
 
   // ---------- malzemeler ----------
-  const tCephe = [1, 4, 3].map(n => ({ map: doku(`cephe_${n}.jpg`), em: doku(`cephe_${n}_isik.jpg`) }));
-  function cepheMat(n) {
-    const m = new THREE.MeshStandardMaterial({
-      color: 0xffffff, vertexColors: true, roughness: 0.86, metalness: 0.0,
-      map: tCephe[n].map, emissiveMap: tCephe[n].em, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 1,
-    });
-    m.onBeforeCompile = (s) => {
-      s.uniforms.uAcik = IS.acik; s.uniforms.uPenc = IS.penc;
-      s.vertexShader = s.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aSd; varying float vSd;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSd = aSd;');
-      s.fragmentShader = s.fragmentShader
-        .replace('#include <common>', `#include <common>
-varying float vSd; uniform float uAcik, uPenc;
-${GLSL_HASH}`)
-        .replace('#include <map_fragment>', `
-vec3 wallC = diffuseColor.rgb;
-float lum = dot(texture2D(map, vMapUv).rgb, vec3(0.3, 0.59, 0.11));
-float kk = clamp(pow(lum / 0.042, 1.25), 0.0, 1.3);
-vec3 glass = vec3(0.05, 0.07, 0.1);
-float wm = smoothstep(0.12, 0.5, kk);
-diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
-        .replace('#include <emissivemap_fragment>', `
-{
-  float ew = dot(texture2D(emissiveMap, vMapUv).rgb, vec3(0.3, 0.59, 0.11));
-  vec2 wc = floor(vMapUv * 8.0) + vSd * 31.0;
-  float w1 = h21(wc), w2 = h21(wc + 7.7);
-  vec3 wcol = mix(vec3(1.0, 0.58, 0.2), vec3(1.0, 0.82, 0.5), w2);
-  if (w2 < 0.12) wcol = vec3(0.62, 0.78, 1.0);
-  totalEmissiveRadiance = wcol * ew * step(0.42, w1) * 1.1 * uPenc;
-}`);
-    };
-    return m;
-  }
-  const cepheMats = [cepheMat(0), cepheMat(1), cepheMat(2)];
-  let catiMat = null;
   const cimenTex = (() => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 256; const c = cv.getContext('2d');
     c.fillStyle = '#9a9a9a'; c.fillRect(0, 0, 256, 256);
@@ -209,15 +174,14 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     for (let i = 0; i < 5200; i++) { const g = 120 + r() * 120 | 0; c.fillStyle = `rgba(${g},${g},${g},${0.18 + r() * 0.3})`; const s = 1 + r() * 3; c.fillRect(r() * 256, r() * 256, s, s * (0.6 + r())); }
     const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; return t;
   })();
-  catiMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: cimenTex, roughness: 0.9 });
   const zMat = (opt) => { const m = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0, ...opt }); zeminMatlar.push(m); return m; };
-  const tAsf = doku('asfalt_islak.jpg'), tKal = doku('kaldirim.jpg');
+  const tAsf = asfaltDokusu(aniso), tKal = kilitTasiDokusu(aniso);
   const matZemin = zMat({ vertexColors: true, map: cimenTex, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
   const matArazi = zMat({ vertexColors: true, map: cimenTex, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: 0 });
   const matKaldirim = zMat({ vertexColors: true, map: tKal, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const matAsfalt = zMat({ vertexColors: true, map: tAsf, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const matCizgi = zMat({ vertexColors: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  matAsfalt.userData.k = 0.62; matKaldirim.userData.k = 0.95; matZemin.userData.k = 1.0; matArazi.userData.k = 1.0; matCizgi.userData.k = 1.0;
+  matAsfalt.userData.k = 0.9; matKaldirim.userData.k = 0.95; matZemin.userData.k = 1.0; matArazi.userData.k = 1.0; matCizgi.userData.k = 1.0;
 
   // ---------- zemin tabanı (kapsam kenarları ızgara çizgisi) ----------
   {
@@ -261,11 +225,11 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
 
   // ---------- yollar ----------
   const YOL_STIL = { // [asfalt renk, kaldırım var?, kaldırım yarı ek]
-    secondary: { kal: 2.4, ren: [0.33, 0.33, 0.36], cizgi: 'cift' },
-    secondary_link: { kal: 1.6, ren: [0.33, 0.33, 0.36], cizgi: 'yok' },
-    tertiary: { kal: 2.2, ren: [0.34, 0.34, 0.37], cizgi: 'kesik' },
-    residential: { kal: 2.0, ren: [0.36, 0.36, 0.39], cizgi: 'kesik' },
-    service: { kal: 0, ren: [0.4, 0.39, 0.41], cizgi: 'yok' },
+    secondary: { kal: 2.4, ren: [1.06, 0.98, 0.86], cizgi: 'cift' },
+    secondary_link: { kal: 1.6, ren: [1.06, 0.98, 0.86], cizgi: 'yok' },
+    tertiary: { kal: 2.2, ren: [1.08, 1.0, 0.88], cizgi: 'kesik' },
+    residential: { kal: 2.0, ren: [1.1, 1.02, 0.9], cizgi: 'kesik' },
+    service: { kal: 0, ren: [1.08, 1.05, 1.0], cizgi: 'yok' },
     footway: { kal: 0, ren: [0.62, 0.6, 0.56], cizgi: 'yok' },
     steps: { kal: 0, ren: [0.5, 0.48, 0.45], cizgi: 'yok' },
   };
@@ -290,8 +254,11 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
       const st = YOL_STIL[y.tur] || YOL_STIL.service;
       const hw = y.genislik / 2;
       for (let i = 0; i + 1 < y.nokta.length; i++) yolSeg.push([y.nokta[i][0], y.nokta[i][1], y.nokta[i + 1][0], y.nokta[i + 1][1], hw]);
-      if (st.kal > 0) seritYuzey(agK, y.nokta, hw + st.kal, (x, z) => Y(x, z) + 0.05, [0.62, 0.61, 0.58], 1 / 5, MAXK);
-      seritYuzey(agA, y.nokta, hw, (x, z) => Y(x, z) + 0.1, st.ren, 1 / 9, MAXK);
+      if (st.kal > 0) {
+        seritYuzey(agK, y.nokta, hw + st.kal, (x, z) => Y(x, z) + 0.05, [1, 0.99, 0.96], 1 / 2.4, MAXK);
+        for (const sg of [1, -1]) seritYuzey(agK, y.nokta, 0.16, (x, z) => Y(x, z) + 0.12, [1.55, 1.55, 1.5], 1 / 2.4, MAXK, sg * (hw + 0.16)); // bordür taşı (açık, kaldırımla aynı çizim)
+      }
+      seritYuzey(agA, y.nokta, hw, (x, z) => Y(x, z) + 0.1, st.ren, 1 / 7, MAXK);
       if (y.arac_yolu && (st.cizgi === 'kesik' || st.cizgi === 'cift')) {
         const tr = hw + 3;
         // kavşak yakınında çizgi kesilir: yol dilimlerini kavşak mesafesine göre çiz
@@ -337,45 +304,15 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     return en;
   }
 
-  // ---------- binalar: çokgen extrude, malzeme başına TEK birleşik geometri ----------
-  const SIVA = [ // krem / bej / somon / açık sarı / kirli beyaz (Basınevleri tipik sıva)
-    [0.86, 0.78, 0.6], [0.8, 0.7, 0.52], [0.86, 0.62, 0.5], [0.9, 0.72, 0.5], [0.82, 0.8, 0.74],
-    [0.78, 0.55, 0.42], [0.88, 0.82, 0.66], [0.7, 0.66, 0.6],
-  ];
-  const CATI_R = [[1.0, 0.95, 0.9], [0.85, 0.85, 0.88], [1.0, 0.6, 0.46], [0.75, 0.78, 0.8], [0.95, 0.7, 0.55]];
-  const wallAg = [new Ag(true, true), new Ag(true, true), new Ag(true, true)];
-  const roofAg = new Ag(true, false);
-  for (const b of H.binalar) {
-    const u1 = kimlikHash(b.id, 1), u2 = kimlikHash(b.id, 2), u3 = kimlikHash(b.id, 3);
-    let sr = SIVA[Math.floor(u1 * SIVA.length)];
-    const ton = 0.92 + u2 * 0.16;
-    const renk = [sr[0] * ton, sr[1] * ton, sr[2] * ton];
-    const ag = wallAg[b.tur === 'ibadet' ? 0 : (u3 < 0.55 ? 0 : u3 < 0.9 ? 1 : 2)];
-    if (b.tur === 'ibadet') { renk[0] = 0.85; renk[1] = 0.83; renk[2] = 0.78; }
-    const ref = b.y1 - Math.max(1, Math.round(b.yuk / KAT_M)) * KAT_M;
-    const sd = u2;
-    for (const e of b.kenar) {
-      const n = Math.max(1, Math.round(e.L / 3.4));
-      const uA = Math.floor(kimlikHash(b.id, 11 + (e.ax * 7 + e.az * 13 | 0)) * 8) / 8;
-      const u0 = uA, u1w = uA + n / 8;
-      const v0 = (b.y0 - ref) / (KAT_M * 8), v1 = (b.y1 - ref) / (KAT_M * 8);
-      const k0 = ag.p.length / 3;
-      for (const [x, z, yy, uu, vv] of [[e.ax, e.az, b.y0, u0, v0], [e.bx, e.bz, b.y0, u1w, v0], [e.bx, e.bz, b.y1, u1w, v1], [e.ax, e.az, b.y1, u0, v1]])
-        ag.v(x, yy, z, e.nx, 0, e.nz, uu, vv, renk, sd);
-      // (-dz, 0, dx) yönü ile dış normal aynı mı (v0,v1,v2 sarımı)?
-      const d = (-e.dz) * e.nx + e.dx * e.nz;
-      if (d > 0) ag.i.push(k0, k0 + 1, k0 + 2, k0, k0 + 2, k0 + 3); else ag.i.push(k0, k0 + 2, k0 + 1, k0, k0 + 3, k0 + 2);
-    }
-    const cr = CATI_R[Math.floor(u1 * 97) % CATI_R.length];
-    cokgenYuzey(roofAg, b.halka, b.halkalar.slice(1).map(h => { const o = []; for (let i = 0; i < h.length; i += 2) o.push([h[i], h[i + 1]]); return o; }), () => b.y1, cr, 1 / 6, 0);
+  // ---------- binalar: cephe/çatı/balkon/tabela (js/harita_cephe.js) ----------
+  const anaSeg = [];
+  for (const y of veri.yollar) {
+    if (!['primary', 'secondary', 'tertiary'].includes(y.tur) || y.kopru_tunel || !y.arac_yolu) continue;
+    for (let i = 0; i + 1 < y.nokta.length; i++) anaSeg.push([y.nokta[i][0], y.nokta[i][1], y.nokta[i + 1][0], y.nokta[i + 1][1], y.genislik / 2 + 2]);
   }
-  const binaMeshler = [];
-  wallAg.forEach((ag, i) => {
-    if (!ag.i.length) return;
-    const m = new THREE.Mesh(ag.geo(), cepheMats[i]); m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
-    sahne.add(m); binaMeshler.push(m);
-  });
-  { const m = new THREE.Mesh(roofAg.geo(), catiMat); m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; sahne.add(m); binaMeshler.push(m); }
+  const bina = binalariKur({ sahne, H, IS, GLSL_HASH, aniso, anaSeg, G });
+  const binaMeshler = bina.meshler;
+  const catiMat = bina.catiMatlar[1];
 
   // ---------- sınır sis perdesi (görünmez duvarın görsel karşılığı) ----------
   const perdeMat = new THREE.ShaderMaterial({
@@ -405,7 +342,7 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     cam: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.06, metalness: 0.95, emissive: new THREE.Color(0x05070c) }),
   };
   const kumeler = [];
-  const durum = { ag: 0, lamba: 0, cati: 0, arac: 0 };
+  const durum = { ag: 0, lamba: 0, cati: bina.sayi.duzCati, arac: 0 };
   const arac = [];
   let trafikGuncelle = () => {};
   const RP = rng(424242), rp = (a, b) => a + (b - a) * RP();
@@ -481,13 +418,10 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     const yukle = async (u, o) => { try { return await modelYukle('assets/3d/' + u, o); } catch (e) { hata.push(u); return null; } };
     const aracAd = ['sedan', 'taxi', 'van', 'delivery', 'suv', 'hatchbackSports'];
     const aracO = { isikRe: /^light(Front|Back)/i, onRe: /^lightFront/i, isikGuc: 2.2, boy: 4.5, renk: 1, boyaRe: /^paint(?!White)/i, camRe: /^window/i, lastikRe: /^carTire/i };
-    const [araclarM, lambaM, agacM, acM, tankM, antM] = await Promise.all([
+    const [araclarM, lambaM, agacM] = await Promise.all([
       Promise.all(aracAd.map(a => yukle(`arac/${a}.glb`, { ...aracO, boyaBeyaz: a !== 'taxi', boy: a === 'delivery' ? 6.4 : a === 'van' ? 5.0 : a === 'suv' ? 4.8 : 4.4 }))),
       yukle('sehir/Streetlight_Single.glb', { isikRe: /^Light$/, isikGuc: 3, yuk: LH, merkezle: false }),
       yukle('arac/treeLarge.glb', { yuk: 4.8, renk: 0.85 }),
-      yukle('cyberpunk/AC.glb', { yatay: 1.9, renk: 4 }),
-      yukle('cyberpunk/Tank.glb', { yatay: 2.4, renk: 4 }),
-      yukle('cyberpunk/Antenna_2.glb', { yuk: 5.5, renk: 4 }),
     ]);
     if (test && hata.length) console.warn('[HARITA] model yuklenemedi:', hata.join(','));
     // ağaçlar
@@ -507,28 +441,6 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
       const ao = lambaM.isikOrt, phi = ao ? Math.atan2(ao.x, ao.z) : 0;
       for (const l of lambaNok) k.ekle(l[0], Y(l[0], l[1]), l[1], Math.atan2(l[2], l[3]) - phi, 1);
       kumeler.push(k);
-    }
-    // çatı eşyaları (dekor; çarpışma yok): klima, su deposu, anten
-    {
-      const R = rng(99);
-      const kA = acM ? new Kume(grup, acM, 900, mats) : null, kT = tankM ? new Kume(grup, tankM, 500, mats) : null, kN = antM ? new Kume(grup, antM, 500, mats) : null;
-      for (const b of H.binalar) {
-        if (b.yuk < 9) continue;
-        const n = b.alan > 500 ? 3 : b.alan > 200 ? 2 : 1;
-        for (let q = 0; q < n; q++) {
-          for (let d = 0; d < 12; d++) {
-            const x = b.minx + R() * (b.maxx - b.minx), z = b.minz + R() * (b.maxz - b.minz);
-            if (!H.binaIciMi(x, z, 0) || H.binaIciMi(x, z, 0) !== b) continue;
-            if (H.sinirUzakB && H.sinirUzakB(b, x, z) < 2.2) continue;
-            const t = R();
-            if (t < 0.5 && kA) kA.ekle(x, b.y1, z, Math.floor(R() * 4) * Math.PI / 2, 0.9 + R() * 0.4);
-            else if (t < 0.75 && kT && b.alan > 150) kT.ekle(x, b.y1, z, R() * 6, 0.9 + R() * 0.5);
-            else if (kN) kN.ekle(x, b.y1, z, R() * 6, 0.8 + R() * 0.6);
-            durum.cati++; break;
-          }
-        }
-      }
-      for (const k of [kA, kT, kN]) if (k && k.n) kumeler.push(k);
     }
     // trafik: OSM yol grafiğinde dolaşan araçlar
     const iyi = araclarM.map((m, i) => m ? i : -1).filter(i => i >= 0);
@@ -571,14 +483,41 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
         const ke = kenarBul(c.b, en);
         c.a = c.b; c.b = en; c.t = 0; c.L = ke ? ke.L : Math.hypot(D[en].x - B.x, D[en].z - B.z); c.gen = ke ? ke.genislik : 7;
       }
-      const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+      const EX = new THREE.Vector3(1, 0, 0), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
       const R2 = LOD_R * LOD_R;
       trafikGuncelle = (dt, cam, op) => {
         const yakin = H.aracCarp.liste; yakin.length = 0;
         for (const k of aracK) if (k) k.sifirla();
         let hz = 0;
+        // önündeki araca mesafe kuralı: aynı yöne giden öndeki araç <12 m ise yavaşla; kavşakta (kesişen yön)
+        // yalnız küçük sıra numaralı araç yol hakkına sahip (kilitlenmeyi önler); karşı yöndekiler yok sayılır
+        for (let i = 0; i < arac.length; i++) {
+          const c = arac[i]; if (c.sx === undefined) { c.sx = c.x; c.sz = c.z; c.vc = c.v; c.dur = 0; c.gec = 0; c.id = i; }
+        }
         for (const c of arac) {
-          c.t += c.v * dt;
+          const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
+          let aralik = 99;
+          if (c.ox < 1e8) for (const o of arac) {
+            if (o === c) continue;
+            const ddx = o.x - c.x, ddz = o.z - c.z;
+            if (ddx > 14 || ddx < -14 || ddz > 14 || ddz < -14) continue;
+            const fwd = ddx * sy + ddz * cy, yan = Math.abs(ddx * cy - ddz * sy);
+            if (fwd < 0.3 || yan > 2.4) continue;
+            const ileri = fwd - (c.hl + o.hl) * 0.9;
+            if (ileri > 12) continue;
+            const dot = Math.sin(o.yaw) * sy + Math.cos(o.yaw) * cy;
+            if (dot < -0.5) continue;                      // karşı şerit
+            if (dot < 0.6 && o.id > c.id) continue;       // kesişen yön: yol hakkı küçük numarada
+            if (ileri < aralik) aralik = Math.max(0, ileri);
+          }
+          const hedefV = aralik > 8 ? c.v : aralik < 2.5 ? 0 : c.v * (aralik - 2.5) / 5.5;
+          c.gec -= dt; const hv = c.gec > 0 ? c.v : hedefV;
+          if (hv < 0.3) c.dur += dt; else c.dur = 0;
+          if (c.dur > 5) { c.gec = 2.5; c.dur = 0; } // 5 sn kilitlendiyse kısa süre zorla geç
+          c.vc += (hv - c.vc) * Math.min(1, dt * (hv < c.vc ? 3 : 1));
+        }
+        for (const c of arac) {
+          c.t += Math.max(0, c.vc) * dt;
           if (c.t >= c.L) sonraki(c);
           const A = D[c.a], B = D[c.b], u = Math.min(1, c.t / (c.L || 1));
           const ex = B.x - A.x, ez = B.z - A.z, el = Math.hypot(ex, ez) || 1;
@@ -588,7 +527,11 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
           let df = hedef - c.yaw; df = Math.atan2(Math.sin(df), Math.cos(df));
           c.yaw += df * Math.min(1, dt * 4.5);
           const lat = Math.min(c.gen / 4, 2.2);
-          const x = A.x + ex * u + fz * lat, z = A.z + ez * u - fx * lat; // sağ şerit
+          const hgx = A.x + ex * u + fz * lat, hgz = A.z + ez * u - fx * lat; // sağ şerit (hedef)
+          // dönüşte şerit atlamasın: konum hedefe yumuşakça yaklaşır
+          const sk = Math.hypot(hgx - c.sx, hgz - c.sz) > 12 ? 1 : Math.min(1, dt * 8);
+          c.sx += (hgx - c.sx) * sk; c.sz += (hgz - c.sz) * sk;
+          const x = c.sx, z = c.sz;
           c.dx = c.ox < 1e8 ? x - c.ox : 0; c.dz = c.ox < 1e8 ? z - c.oz : 0;
           if (Math.abs(c.dx) > 20 || Math.abs(c.dz) > 20) { c.dx = 0; c.dz = 0; }
           c.ox = x; c.oz = z; c.x = x; c.z = z; c.y = Y(x, z);
@@ -598,7 +541,12 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
           }
           const cdx = x - cam.x, cdz = z - cam.z;
           if (cdx * cdx + cdz * cdz > R2) continue;
-          _q.setFromAxisAngle(EY, c.yaw); _p.set(x, c.y, z); _m.compose(_p, _q, _s);
+          _q.setFromAxisAngle(EY, c.yaw);
+          if (H.arazi.egim) { // eğimde burun zemini izlesin
+            const fx2 = Math.sin(c.yaw) * 2, fz2 = Math.cos(c.yaw) * 2;
+            _q2.setFromAxisAngle(EX, -Math.atan2(Y(x + fx2, z + fz2) - Y(x - fx2, z - fz2), 4)); _q.multiply(_q2);
+          }
+          _p.set(x, c.y, z); _m.compose(_p, _q, _s);
           aracK[c.model].yaz(_m, c.model === TAKSI ? BEYAZ : c.renk);
           if (hz < N) {
             _p.set(x + Math.sin(c.yaw) * 7.2, c.y + 0.06, z + Math.cos(c.yaw) * 7.2); _m.compose(_p, _q, _s); _m.toArray(huzme.instanceMatrix.array, hz * 16); hz++;
@@ -651,7 +599,7 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     sahne.environmentIntensity = cur.env; sahne.backgroundIntensity = cur.bgI;
     IS.acik.value = cur.acik; IS.penc.value = cur.penc;
     for (const m of zeminMatlar) m.color.setScalar(cur.zemin * (m.userData.k ?? 1));
-    catiMat.color.setScalar(cur.acik * 0.8);
+    for (const m of bina.catiMatlar) m.color.setScalar(cur.acik * 0.8);
     G.pozTaban = cur.poz;
     const u = gok.material.uniforms;
     u.turbidity.value = cur.tur; u.rayleigh.value = cur.ray; u.mieCoefficient.value = cur.mie; u.mieDirectionalG.value = cur.mieG; u.sunPosition.value.copy(cur.yon);
@@ -680,6 +628,7 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
   const sehirkam = qs.get('sehirkam');
   const dogusNoktasi = () => H.dogus.clone();
   G.sehir = {
+    cephe: bina.sayi,
     harita: 'basinevleri', poligon: true, kesin: true, egim: H.arazi.egim,
     boyut: Math.min(kp.x1, kp.z1) * 0.95, kapsam: kp,
     binalar: H.binalar, zeminY: H.zeminY, arazi: H.Y, carpis: H.carpis, tasiyici: H.tasiyici, ankrajBul: H.ankrajBul,
@@ -708,6 +657,16 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     if (G2.test && sehirkam) {
       const kam = G2.kamera, d = H.dogus;
       if (sehirkam === '4') { kam.position.set(d.x, d.y + 2.2, d.z); kam.lookAt(d.x + 30, d.y + 3, d.z + 10); }
+      else if (sehirkam === '6') { // çatı seviyesi: orta boy bir binanın çatısından komşu çatılara
+        if (!kur_h.cati) { let en = null, ed = 1e9; for (const b of H.binalar) { if (b.yuk < 15 || b.yuk > 24 || b.alan < 250) continue; const d = Math.hypot(b.px + 20, b.pz - 10); if (d < ed) { ed = d; en = b; } } kur_h.cati = en || H.binalar[0]; }
+        const b = kur_h.cati;
+        kam.position.set(b.px, b.y1 + 2.4, b.pz); kam.lookAt(b.px + 60, b.y1 - 6, b.pz - 25);
+      }
+      else if (sehirkam === '7') { // yakın cephe: balkonlu, 5-6 katlı bir binanın uzun cephesi, sokak seviyesi
+        if (!kur_h.yakin) { let en = null, ed = 1e9; for (const b of H.binalar) { if (b.kat < 5 || b.kat > 6 || b.alan < 250 || b.tur === 'ibadet') continue; const d = Math.hypot(b.px - 10, b.pz + 40); if (d < ed) { ed = d; en = b; } } const b = en || H.binalar[0]; let e0 = b.kenar[0]; for (const e of b.kenar) if (e.L > e0.L) e0 = e; kur_h.yakin = { b, e: e0 }; }
+        const { b, e } = kur_h.yakin, mx = (e.ax + e.bx) / 2, mz = (e.az + e.bz) / 2;
+        kam.position.set(mx + e.nx * 15, Y(mx, mz) + 1.7, mz + e.nz * 15); kam.lookAt(mx, Y(mx, mz) + 7, mz);
+      }
       else if (sehirkam === '3') { kam.position.set(0, 60, 40); kam.lookAt(0, 8, -80); }
       else if (sehirkam === '5') { // ana cadde seviyesi: en uzun 'secondary' yolun başlangıcından yol boyunca
         if (!kur_h.cadde) { let en = null, enL = 0; for (const y of veri.yollar) if (y.tur === 'secondary' && y.nokta.length > 3) { const L = Math.hypot(y.nokta[0][0] - y.nokta.at(-1)[0], y.nokta[0][1] - y.nokta.at(-1)[1]); if (L > enL) { enL = L; en = y; } } kur_h.cadde = en; }
@@ -730,12 +689,14 @@ diffuseColor.rgb = mix(glass, wallC * (0.8 + 0.3 * kk), wm) * uAcik;`)
     const hx = cam.x - son.x, hz2 = cam.z - son.z, hy = cam.y - son.y;
     if (G2.t - son.t > 0.35 || hx * hx + hz2 * hz2 + hy * hy > 36) {
       for (const k of kumeler) k.lod(cam.x, cam.y, cam.z, LOD_R);
+      bina.lod(cam.x, cam.y, cam.z);
       son.t = G2.t; son.x = cam.x; son.y = cam.y; son.z = cam.z;
     }
     trafikGuncelle(Math.min(dt, 0.05), cam, G2.oyuncu && G2.oyuncu.konum);
   };
 
   if (test) {
+    console.log('[HARITA] cephe', JSON.stringify(bina.sayi));
     const bn = H.binalar, tp = {};
     for (const b of bn) tp[b.kat] = (tp[b.kat] || 0) + 1;
     console.log(`[HARITA] kur tamam: bina ${bn.length}, yol ${veri.yollar.length}, alan ${veri.alanlar.length}, egim ${H.arazi.egim}, dogus ${H.dogus.x.toFixed(0)},${H.dogus.z.toFixed(0)} bosluk ${H.dogusBosluk.toFixed(0)} m (${H.dogusAd}), kat dagilimi ${JSON.stringify(tp)}, yol agi dugum ${H.yolAgi.dugumler.length}`);

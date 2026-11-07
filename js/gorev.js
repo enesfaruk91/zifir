@@ -14,6 +14,207 @@ export function kur(G) {
   const msj = (m, s = 3.5) => G.arayuz?.mesaj?.(m, s);
   const zemin = (x, z) => sehir()?.zeminY?.(x, z) ?? 0;
 
+  // ---------- gerçek harita yerleşimi (Basınevleri) ----------
+  const veriH = () => G.harita?.veri || null;
+  const gercek = () => !!(sehir()?.poligon && veriH());
+  const pip = (h, x, z) => { let ic = false; for (let i = 0, j = h.length - 1; i < h.length; j = i++) { const a = h[i], b = h[j]; if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) ic = !ic; } return ic; };
+  let _parklar = null, _yolAd = null;
+  function parklar() {
+    if (_parklar) return _parklar;
+    _parklar = (veriH()?.alanlar || []).filter(a => a.tur === 'park' && a.halka?.length >= 3).map(a => {
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, al = 0;
+      for (let i = 0; i < a.halka.length; i++) { const p = a.halka[i], q = a.halka[(i + 1) % a.halka.length]; x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); al += p[0] * q[1] - q[0] * p[1]; }
+      return { ad: a.ad || '', halka: a.halka, x0, x1, z0, z1, alan: Math.abs(al) / 2 };
+    }).sort((a, b) => b.alan - a.alan);
+    return _parklar;
+  }
+  function yolAdlari() { // [{ad, tur, nokta}] — adı olan araç yolları
+    if (_yolAd) return _yolAd;
+    _yolAd = (veriH()?.yollar || []).filter(y => y.ad && y.arac_yolu && y.nokta?.length > 1);
+    return _yolAd;
+  }
+  function enYakinYolAdi(x, z, maxD = 60) { // en yakın adlı yol
+    let en = '', enD = maxD;
+    for (const y of yolAdlari()) for (let i = 0; i + 1 < y.nokta.length; i++) {
+      const [ax, az] = y.nokta[i], [bx, bz] = y.nokta[i + 1];
+      const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      const d = Math.hypot(x - ax - dx * u, z - az - dz * u);
+      if (d < enD) { enD = d; en = y.ad; }
+    }
+    return en;
+  }
+  function parkAdi(x, z) { for (const p of parklar()) if (p.ad && x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1 && pip(p.halka, x, z)) return p.ad; return ''; }
+  const sokakAdi = (a) => a ? (/(Sokak|Cadde|Bulvar|Park)/.test(a) ? a : a + ' Sokak') : '';
+  // v noktasının kuşağında (yatay r m) y-4'ten yüksek çatılı bir bina var mı (ağ tutunma yeri)
+  function ankrajVar(x, y, z, r = 24, fark = 4) {
+    const bs = sehir()?.binalar; if (!bs) return true;
+    for (const b of bs) {
+      if (b.y1 < y - fark) continue;
+      if (Math.hypot(b.px - x, b.pz - z) - (b.pr || 0) - 6 > r) continue;
+      if (b.minx - r > x || b.maxx + r < x || b.minz - r > z || b.maxz + r < z) continue;
+      return true;
+    }
+    return false;
+  }
+  function kureGecerli(v, kayma = 0.6) {
+    const s = sehir(); if (!s) return true;
+    if (s.sinirIci && !s.sinirIci(v.x, v.z, 20)) return false;
+    if (s.binaIcinde && s.binaIcinde(v.x, v.y, v.z, kayma) >= 0) return false;
+    if (s.carpis) { const r = s.carpis(v, 1.2); if (r?.duzeltme && r.duzeltme.lengthSq() > 1e-4) return false; }
+    return true;
+  }
+  // en uzak nokta örneklemesi: adaylardan yayılımı en geniş n tanesi
+  function yay(adaylar, n, mevcut = []) {
+    const secilen = [], ref = mevcut.slice();
+    while (secilen.length < n && adaylar.length) {
+      let bi = -1, bd = -1;
+      for (let i = 0; i < adaylar.length; i++) {
+        let md = 1e9; for (const r of ref) { const d = Math.hypot(r.x - adaylar[i].x, r.z - adaylar[i].z); if (d < md) md = d; }
+        if (md > bd) { bd = md; bi = i; }
+      }
+      const c = adaylar.splice(bi, 1)[0]; secilen.push(c); ref.push(c);
+    }
+    return secilen;
+  }
+  function kurePlani(n) {
+    const s = sehir(), sonuc = { park: [], cati: [], hava: [], adlar: [] };
+    const nPark = Math.round(n * 0.36), nCati = Math.round(n * 0.4), nHava = n - nPark - nCati;
+    const pk = parklar().filter(p => p.alan > 1500), topAlan = pk.reduce((a, p) => a + p.alan, 0) || 1;
+    const aPark = [];
+    for (let t = 0; t < 900 && aPark.length < nPark * 8 && pk.length; t++) {
+      let r = Math.random() * topAlan, p = pk[0]; for (const q of pk) { r -= q.alan; if (r <= 0) { p = q; break; } }
+      const x = rnd(p.x0, p.x1), z = rnd(p.z0, p.z1);
+      if (!pip(p.halka, x, z) || s.binaIciMi(x, z, 3)) continue;
+      const v = V(x, zemin(x, z) + rnd(1.6, 3), z);
+      if (kureGecerli(v)) { v.park = p.ad; aPark.push(v); }
+    }
+    const aCati = [];
+    const bs = s.binalar.filter(b => b.yuk >= 9);
+    for (let t = 0; t < 900 && aCati.length < nCati * 8 && bs.length; t++) {
+      const b = bs[(Math.random() * bs.length) | 0];
+      const q = s.catiyaSigdir(b, rnd(b.minx, b.maxx), rnd(b.minz, b.maxz), 2);
+      if (!q || s.binaIciMi(q.x, q.z, 0) !== b) continue;
+      const v = V(q.x, b.y1 + rnd(1.6, 3), q.z);
+      if (kureGecerli(v, 0.3)) aCati.push(v);
+    }
+    const aHava = [];
+    for (let t = 0; t < 1500 && aHava.length < nHava * 8; t++) {
+      const sk = s.sokakNoktasi(); const v = V(sk.x, zemin(sk.x, sk.z) + rnd(8, 13), sk.z);
+      if (kureGecerli(v) && ankrajVar(v.x, v.y, v.z, 22, 2)) aHava.push(v);
+    }
+    const tum = [];
+    sonuc.park = yay(aPark, nPark, tum); tum.push(...sonuc.park);
+    sonuc.cati = yay(aCati, nCati, tum); tum.push(...sonuc.cati);
+    sonuc.hava = yay(aHava, nHava, tum); tum.push(...sonuc.hava);
+    const hepsi = [...sonuc.park, ...sonuc.cati, ...sonuc.hava];
+    // eksik kalırsa (küçük harita) kalan adaylarla tamamla
+    for (const a of [aPark, aCati, aHava]) while (hepsi.length < n && a.length) hepsi.push(a.pop());
+    const adlar = new Set(); for (const v of sonuc.park) if (v.park) adlar.add(v.park);
+    sonuc.adlar = [...adlar].slice(0, 2);
+    sonuc.hepsi = hepsi; return sonuc;
+  }
+  function yolSurucu() {
+    const ag = sehir()?.yolAgi; if (!ag) return null;
+    const kenarMap = new Map(); for (const e of ag.kenarlar) { kenarMap.set(e.a + '_' + e.b, e); kenarMap.set(e.b + '_' + e.a, e); }
+    return { ag, kenar: (a, b) => kenarMap.get(a + '_' + b) };
+  }
+  // kenar sırasıyla yol üstünde ilerle, her `adim` metrede nokta + yön ver
+  function yolBoyuncaYuru(basla, hedefUzunluk, adim, yolAd) {
+    const sg = yolSurucu(); if (!sg) return null;
+    const D = sg.ag.dugumler, noktalar = [], ziyaret = new Set([basla]);
+    let a = basla, onceki = -1, kalanAdim = 0, toplam = 0, dx = 0, dz = 0, ad = {};
+    while (toplam < hedefUzunluk) {
+      let en = -1, sk = -9;
+      for (const k of D[a].komsu) {
+        if (k === onceki || ziyaret.has(k)) continue;
+        const ke = sg.kenar(a, k); if (!ke || ke.tur === 'service' || ke.tur === 'secondary_link') continue;
+        const ex = D[k].x - D[a].x, ez = D[k].z - D[a].z, el = Math.hypot(ex, ez) || 1;
+        const duz = toplam === 0 ? 0 : (dx * ex + dz * ez) / (Math.hypot(dx, dz) * el || 1);
+        if (duz < 0.2 && toplam > 0) continue;
+        const s2 = duz + (ke.tur === 'secondary' ? 0.5 : ke.tur === 'tertiary' ? 0.3 : 0) + Math.random() * 0.2;
+        if (s2 > sk) { sk = s2; en = k; }
+      }
+      if (en < 0) break;
+      const ke = sg.kenar(a, en), ex = D[en].x - D[a].x, ez = D[en].z - D[a].z, L = ke ? ke.L : Math.hypot(ex, ez);
+      const ya = yolAd?.get(ke?.yol); if (ya) ad[ya] = (ad[ya] || 0) + L;
+      let t = kalanAdim;
+      while (t <= L) { noktalar.push({ x: D[a].x + ex * t / L, z: D[a].z + ez * t / L, fx: ex / L, fz: ez / L, gen: ke?.genislik || 8 }); t += adim; }
+      kalanAdim = t - L; toplam += L; dx = ex; dz = ez; ziyaret.add(en); onceki = a; a = en;
+    }
+    return { noktalar, ad: Object.entries(ad).sort((p, q) => q[1] - p[1])[0]?.[0] || '' };
+  }
+  function halkaGecerli(x, y, z, fx, fz) {
+    const s = sehir(); if (!s) return true;
+    const R = 6.2, ux = -fz, uz = fx; // halka düzlemindeki yatay eksen
+    if (y - R < zemin(x, z) + 2.5) return false;
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * 6.283, c = Math.cos(a) * R, sn = Math.sin(a) * R;
+      const px = x + ux * c, py = y + sn, pz = z + uz * c;
+      if (s.binaIcinde && s.binaIcinde(px, py, pz, 0) >= 0) return false;
+      if (s.carpis) { const r = s.carpis(V(px, py, pz), 0.6); if (r?.duzeltme && r.duzeltme.lengthSq() > 1e-4) return false; }
+    }
+    if (s.binaIcinde && s.binaIcinde(x, y, z, 0) >= 0) return false;
+    return ankrajVar(x, y, z, 24, 4);
+  }
+  function halkaPlani(n = 8) {
+    const s = sehir(), sg = yolSurucu(); if (!sg) return null;
+    const p = oyuncu(), D = sg.ag.dugumler, yolAd = new Map((veriH()?.yollar || []).map(y => [y.id, y.ad]));
+    const adaylar = [];
+    for (let i = 0; i < D.length; i++) {
+      if (D[i].komsu.length < 1 || (s.sinirIci && !s.sinirIci(D[i].x, D[i].z, 80))) continue;
+      const guzel = D[i].komsu.some(k => { const ke = sg.kenar(i, k); return ke && (ke.tur === 'secondary' || ke.tur === 'tertiary'); });
+      const d = Math.hypot(D[i].x - p.x, D[i].z - p.z);
+      adaylar.push({ i, o: d * (guzel ? 0.5 : 1) * rnd(0.8, 1.25) });
+    }
+    adaylar.sort((a, b) => a.o - b.o);
+    let enIyi = null;
+    for (const ad of adaylar.slice(0, 60)) {
+      const yr = yolBoyuncaYuru(ad.i, 520, 44, yolAd); if (!yr || yr.noktalar.length < n) continue;
+      const liste = [];
+      let atlanan = 0;
+      for (const q of yr.noktalar) {
+        if (liste.length >= n) break;
+        const zy = zemin(q.x, q.z); let tamam = null;
+        for (const h of [15, 12, 18, 21]) { if (halkaGecerli(q.x, zy + h, q.z, q.fx, q.fz)) { tamam = V(q.x, zy + h, q.z); tamam.fx = q.fx; tamam.fz = q.fz; break; } }
+        if (tamam) liste.push(tamam); else atlanan++;
+        if (atlanan > 1) break;
+      }
+      if (liste.length >= n) { enIyi = { halkalar: liste, ad: yr.ad }; break; }
+    }
+    return enIyi;
+  }
+  // patron: en geniş açık alan (park/meydan), binalardan uzak
+  function patronAlani() {
+    const s = sehir(); let en = null;
+    for (const pk of parklar().slice(0, 8)) {
+      for (let x = pk.x0; x <= pk.x1; x += 5) for (let z = pk.z0; z <= pk.z1; z += 5) {
+        if (!pip(pk.halka, x, z) || s.binaIciMi(x, z, 0.1)) continue;
+        let r = 6; while (r < 60 && !s.binaIciMi(x, z, r + 4)) r += 4;
+        if (!en || r > en.bosluk) en = { x, z, bosluk: r, ad: pk.ad };
+      }
+    }
+    return en;
+  }
+  function kediPlani() {
+    const s = sehir(), p = oyuncu(); const adaylar = [];
+    for (const b of s.binalar) {
+      if (b.yuk < 12 || b.yuk > 27 || b.alan < 120 || !b.kenar) continue;
+      const d = Math.hypot(b.px - p.x, b.pz - p.z);
+      if (d < 70 || d > 600) continue;
+      for (const e of b.kenar) {
+        const L = Math.hypot(e.bx - e.ax, e.bz - e.az); if (L < 7) continue;
+        const x = (e.ax + e.bx) / 2 - e.nx * 1.3, z = (e.az + e.bz) / 2 - e.nz * 1.3;
+        if (s.binaIciMi(x, z, 0) !== b) continue;
+        if (s.sinirNokta(b, x, z).d < 1.0) continue;
+        const yol = enYakinYolAdi(x, z, 40);
+        adaylar.push({ b, x, z, nx: e.nx, nz: e.nz, yol, o: d * (yol ? 0.6 : 1) * rnd(0.8, 1.3) });
+      }
+    }
+    adaylar.sort((a, b) => a.o - b.o);
+    return adaylar[0] || null;
+  }
+
   // ---------- kayıt ----------
   const kayit = { toplamKure: 0, puan: 0, zincir: 0, tur: 0 };
   try { Object.assign(kayit, JSON.parse(localStorage.getItem('zifir_kayit') || '{}')); } catch (e) { /* yok say */ }
@@ -45,9 +246,14 @@ export function kur(G) {
     }
     return V(rnd(-100, 100), 20, rnd(-100, 100));
   }
+  let kureAdlar = [];
   function kureleriYenile() {
+    let pl = null;
+    if (gercek()) { try { pl = kurePlani(KURE_SAYI); } catch (e) { console.warn('[GOREV] kure plani', e && e.message); } }
+    if (pl) kureAdlar = pl.adlar;
     for (let i = 0; i < KURE_SAYI; i++) {
-      kPos[i].copy(kureNoktasi()); kVar[i] = true;
+      if (pl?.hepsi[i]) kPos[i].copy(pl.hepsi[i]); else kPos[i].copy(kureNoktasi());
+      kVar[i] = true;
       const c = kRenkler[i % 3].clone().multiplyScalar(2.2);
       kCekirdek.setColorAt(i, c); kHale.setColorAt(i, c);
     }
@@ -87,15 +293,23 @@ export function kur(G) {
   }
   const kedi = kediYap();
   const kediDurum = { var: false, konum: V(), kurtarildi: false, t: 0 };
+  let kediYer = null; // {ad}
   function kediYerles() {
     const s = sehir(); let x, y, z, yaw = 0;
-    const b = s?.binalar?.length ? s.binalar.filter(q => q.h >= 14)[0 | (Math.random() * Math.max(1, s.binalar.filter(q => q.h >= 14).length))] : null;
-    if (b) {
-      const yan = Math.random() < 0.5; const sg = Math.random() < 0.5 ? -1 : 1;
-      x = b.x + (yan ? sg * (b.gx / 2 - 1.1) : rnd(-b.gx / 3, b.gx / 3));
-      z = b.z + (yan ? rnd(-b.gz / 3, b.gz / 3) : sg * (b.gz / 2 - 1.1));
-      y = zemin(x, z); yaw = yan ? (sg > 0 ? Math.PI / 2 : -Math.PI / 2) : (sg > 0 ? 0 : Math.PI);
-    } else { x = rnd(-60, 60); z = rnd(-60, 60); y = zemin(x, z); }
+    kediYer = null;
+    const kp = gercek() ? kediPlani() : null;
+    if (kp) {
+      x = kp.x; z = kp.z; y = kp.b.y1; yaw = Math.atan2(kp.nx, kp.nz); // aşağı sokağa bakar
+      kediYer = { ad: sokakAdi(kp.yol) || kp.b.ad || '', bina: kp.b };
+    } else {
+      const b = s?.binalar?.length ? s.binalar.filter(q => q.h >= 14)[0 | (Math.random() * Math.max(1, s.binalar.filter(q => q.h >= 14).length))] : null;
+      if (b) {
+        const yan = Math.random() < 0.5; const sg = Math.random() < 0.5 ? -1 : 1;
+        x = b.x + (yan ? sg * (b.gx / 2 - 1.1) : rnd(-b.gx / 3, b.gx / 3));
+        z = b.z + (yan ? rnd(-b.gz / 3, b.gz / 3) : sg * (b.gz / 2 - 1.1));
+        y = zemin(x, z); yaw = yan ? (sg > 0 ? Math.PI / 2 : -Math.PI / 2) : (sg > 0 ? 0 : Math.PI);
+      } else { x = rnd(-60, 60); z = rnd(-60, 60); y = zemin(x, z); }
+    }
     kediDurum.konum.set(x, y, z); kedi.position.set(x, y, z); kedi.rotation.y = yaw; kedi.scale.setScalar(1.7);
     kedi.visible = true; kediDurum.var = true; kediDurum.kurtarildi = false;
   }
@@ -130,12 +344,12 @@ export function kur(G) {
   const GOREVLER = [
     {
       ad: 'Işık Kürelerini Topla', renk: 0x40fff0, ikon: 'ikon_kure',
-      baslat() { sayac.kure = 0; aktif.hedef = 5 + 2 * zorluk(); aktif.aciklama = 'Çalınan ışık kürelerinden ' + aktif.hedef + ' tanesini topla.'; },
+      baslat() { sayac.kure = 0; aktif.hedef = 5 + 2 * zorluk(); aktif.aciklama = 'Çalınan ışık kürelerinden ' + aktif.hedef + ' tanesini topla: parklarda, çatılarda ve sokakların üstünde dağıldılar' + (kureAdlar.length ? ' (' + kureAdlar.join(', ') + ' dahil)' : '') + '.'; },
       guncelle() { aktif.ilerleme = sayac.kure; aktif.isaret = enYakinKure(); return sayac.kure >= aktif.hedef; },
     },
     {
       ad: 'Kediyi Kurtar', renk: 0xffd060, ikon: 'ikon_kedi',
-      baslat() { kediYerles(); aktif.hedef = 1; aktif.aciklama = 'Çatıda mahsur kalan kediyi bul!'; aktif.isaret = kediDurum.konum; },
+      baslat() { kediYerles(); aktif.hedef = 1; aktif.aciklama = kediYer?.ad ? kediYer.ad + ' üstündeki bir apartmanın çatısında mahsur kalan kediyi bul!' : 'Çatıda mahsur kalan kediyi bul!'; aktif.isaret = kediDurum.konum; },
       guncelle() {
         aktif.ilerleme = kediDurum.kurtarildi ? 1 : 0;
         if (!kediDurum.kurtarildi && oyuncu().distanceTo(kediDurum.konum) < 2.8) {
@@ -159,7 +373,7 @@ export function kur(G) {
     },
     {
       ad: 'Halka Yarışı', renk: 0x40fff0, ikon: 'ikon_halka',
-      baslat() { halkaKur(); aktif.hedef = 8; aktif.aciklama = 'Havadaki neon halkalardan sırayla geç!'; },
+      baslat() { halkaKur(); aktif.hedef = 8; aktif.aciklama = halkaYol ? halkaYol + ' boyunca uzanan neon halkalardan sırayla geç!' : 'Havadaki neon halkalardan sırayla geç!'; },
       guncelle(dt) {
         const h = halkalar[halkaNo];
         halkaSure -= dt;
@@ -177,7 +391,7 @@ export function kur(G) {
     },
     {
       ad: 'Kamyoneti Kovala', renk: 0xff5599, ikon: 'ikon_kamyonet',
-      baslat() { aktif.hedef = 1; aktif.aciklama = 'Hırsız robot kamyoneti yakala ve yumrukla!'; kamyonet = G.dusman?.olustur?.('kamyonet') || null; sure = 240; },
+      baslat() { aktif.hedef = 1; aktif.aciklama = 'Hırsız robot kamyoneti yakala ve yumrukla!'; kamyonet = G.dusman?.olustur?.('kamyonet') || null; sure = 240; if (kamyonet?.yolAd) aktif.aciklama = 'Hırsız robot kamyoneti ' + sokakAdi(kamyonet.yolAd) + ' üzerinde kaçıyor! Yakala ve yumrukla!'; },
       guncelle(dt) {
         if (!kamyonet) return true;
         aktif.ilerleme = kamyonet.canli ? 0 : 1; aktif.isaret = kamyonet.konum;
@@ -191,10 +405,14 @@ export function kur(G) {
       ad: 'Patron: DEV PAS ROBOT', renk: 0xff3030, ikon: 'ikon_patron',
       baslat() {
         aktif.hedef = 100; aktif.aciklama = 'Dev Pas Robotun SIRTINDAKİ parlayan pile arkadan vur!';
-        let v = sehir()?.rastgeleCati?.();
-        const p = oyuncu();
-        for (let i = 0; i < 8 && v && Math.hypot(v.x - p.x, v.z - p.z) < 70; i++) v = sehir().rastgeleCati();
-        if (!v) v = V(p.x + 60, 0, p.z);
+        let v = null; const p = oyuncu();
+        const pa = gercek() ? patronAlani() : null;
+        if (pa) { v = V(pa.x, zemin(pa.x, pa.z), pa.z); if (pa.ad) aktif.aciklama = pa.ad + ' içinde Dev Pas Robotun SIRTINDAKİ parlayan pile arkadan vur!'; }
+        else {
+          v = sehir()?.rastgeleCati?.();
+          for (let i = 0; i < 8 && v && Math.hypot(v.x - p.x, v.z - p.z) < 70; i++) v = sehir().rastgeleCati();
+          if (!v) v = V(p.x + 60, 0, p.z);
+        }
         patron = G.dusman?.dev?.(v.clone()) || null;
       },
       guncelle() {
@@ -206,11 +424,23 @@ export function kur(G) {
     },
   ];
 
+  let halkaYol = '';
   function halkaKur() {
     const p = oyuncu(), lim = (sehir()?.boyut || 400) * 0.85;
+    halkaKonum = []; halkaYol = '';
+    let yon = rnd(0, 6.28), hp = null;
+    if (gercek()) { try { hp = halkaPlani(8); } catch (e) { console.warn('[GOREV] halka plani', e && e.message); } }
+    if (hp) {
+      halkaKonum = hp.halkalar; halkaYol = hp.ad;
+      for (let i = 0; i < 8; i++) {
+        const h = halkalar[i], q = halkaKonum[i];
+        h.visible = true; h.material = i === 0 ? mHalkaAktif : mHalkaBekle; h.position.copy(q);
+        h.lookAt(q.x + q.fx, q.y, q.z + q.fz); h.rotation.z = 0;
+      }
+      halkaNo = 0; halkaSure = 40 + 22 * 8 + 20 * zorluk();
+      return;
+    }
     let x = p.x, y = Math.max(p.y, 20) + 8, z = p.z;
-    halkaKonum = [];
-    let yon = rnd(0, 6.28);
     for (let i = 0; i < 8; i++) {
       for (let k = 0; k < 6; k++) {
         const nx = x + Math.cos(yon) * rnd(40, 60), nz = z + Math.sin(yon) * rnd(40, 60);
@@ -327,7 +557,21 @@ export function kur(G) {
   G.olay.on('robotYenildi', v => { if (egitim === 3 && v?.tur === 'dron') egitimSay.dron++; });
 
   G.gorev = { aktif, kaydet, get idx() { return gIdx; }, puan: kayit.puan || 0, toplamKure: kayit.toplamKure || 0, kayit, atla() { if (egitim >= 0) egitimAdim(egitim); else if (gGec) bitir(); },
-    egitimiTekrarla() { egitimBaslat(); }, get egitimde() { return egitim >= 0; } };
+    egitimiTekrarla() { egitimBaslat(); }, get egitimde() { return egitim >= 0; },
+    // harita/mini harita/test: aktif görevin hedef noktaları
+    hedefler() {
+      const o = [];
+      if (egitim >= 0) return o;
+      if (gGec === GOREVLER[0]) { for (let i = 0; i < KURE_SAYI; i++) if (kVar[i]) o.push(kPos[i]); }
+      else if (gGec === GOREVLER[1]) { if (kediDurum.var) o.push(kediDurum.konum); }
+      else if (gGec === GOREVLER[3]) { for (let i = halkaNo; i < halkaKonum.length; i++) o.push(halkaKonum[i]); }
+      else if (aktif.isaret) o.push(aktif.isaret);
+      return o;
+    },
+    // test: yerleşim planı + doğrudan görev başlat
+    plan: { kureler: () => kPos.filter((_, i) => kVar[i]), kedi: () => (kediDurum.var ? { konum: kediDurum.konum, ...kediYer } : null), halkalar: () => halkaKonum, patronAlani, halkaYol: () => halkaYol,
+      yeniKure: kureleriYenile, yeniKedi: () => { kediYerles(); return { konum: kediDurum.konum, ...kediYer }; }, yeniHalka: () => { halkaKur(); return halkaKonum; }, parkAdi, enYakinYolAdi },
+    testBaslat(i) { gGec?.temizle?.(); egitim = -1; baslat(i); } };
   const egitimIstek = !kayit.egitimBitti && (!G.test || new URLSearchParams(location.search).has('egitim'));
   if (egitimIstek) egitimAdim(0); else baslat(kayit.zincir || 0);
   kureleriCiz();
